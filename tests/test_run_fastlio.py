@@ -32,3 +32,36 @@ def test_lidar_runners_declare_continuous_frame():
     from ofd import run_kissicp
     assert '"continuous_frame": True' in inspect.getsource(run_fastlio.run)
     assert '"continuous_frame": True' in inspect.getsource(run_kissicp.run)
+
+
+def _attempt(tmp_path, end, raw_ts):
+    from ofd import se3
+    att = tmp_path / "fastlio.attempts" / "a1"; att.mkdir(parents=True)
+    se3.save_tum(att / "raw_odom.tum", raw_ts, poses(len(raw_ts)))
+    (att / "log.txt").write_text("IMU Initial Done\n")
+    return att
+
+
+def test_finalize_promotes_atomically_and_replaces_stale_files(tmp_path):
+    out = tmp_path / "fastlio"; out.mkdir()
+    (out / "stale.txt").write_text("velho")
+    end = np.arange(10) * 100 * MS
+    att = _attempt(tmp_path, end, end + 1 * MS)
+    run_fastlio.finalize(att, out, end, {"config": "x"})
+    assert not (out / "stale.txt").exists()
+    import json
+    meta = json.loads((out / "run.json").read_text())
+    assert meta["attempt_dir"] == str(att) and meta["matched_frac"] == 1.0
+    assert (att / "log.txt").exists()                       # tentativa preservada
+
+
+def test_finalize_failure_keeps_previous_output(tmp_path):
+    out = tmp_path / "fastlio"; out.mkdir()
+    (out / "run.json").write_text('{"bom": true}')
+    end = np.arange(10) * 100 * MS
+    att = _attempt(tmp_path, end, end + 50 * MS)            # nada casa
+    with pytest.raises(RuntimeError):
+        run_fastlio.finalize(att, out, end, {})
+    assert (out / "run.json").read_text() == '{"bom": true}'   # saída anterior intacta
+    assert (att / "raw_odom.tum").exists()
+    assert not any(p.name.startswith("fastlio.staging") for p in tmp_path.iterdir())

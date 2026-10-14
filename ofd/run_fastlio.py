@@ -1,6 +1,8 @@
 """Convert ROS1 bag -> ROS2, run FAST-LIO, play bag, record /Odometry -> common run format."""
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -29,18 +31,53 @@ def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9):
     return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "tol_ms": tol_ms}
 
 
+def _promote(staging, out_dir):
+    """Troca out_dir por staging com renomeações (sem estado misturado de execuções diferentes)."""
+    out_dir = Path(out_dir)
+    old = out_dir.with_name(out_dir.name + f".old-{os.getpid()}")
+    if out_dir.exists():
+        os.rename(out_dir, old)
+    os.rename(staging, out_dir)
+    if old.exists():
+        shutil.rmtree(old)
+
+
+def finalize(attempt_dir, out_dir, end_ns, meta):
+    """Monta o formato comum a partir dos artefatos de UMA tentativa e promove atomicamente.
+    Em falha, levanta e não toca em out_dir; a tentativa fica preservada para comparação."""
+    attempt_dir, out_dir = Path(attempt_dir), Path(out_dir)
+    raw_ts, raw_Ts = se3.load_tum(attempt_dir / "raw_odom.tum")
+    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns)
+    staging = out_dir.with_name(out_dir.name + f".staging-{os.getpid()}")
+    if staging.exists():
+        shutil.rmtree(staging)
+    try:
+        tracks.write_run(staging, ts, Ts, state, pd.DataFrame({"ts_ns": ts}),
+                         {**meta, **info, "attempt_dir": str(attempt_dir)})
+        for f in ("log.txt", "raw_odom.tum"):
+            if (attempt_dir / f).exists():
+                shutil.copy2(attempt_dir / f, staging / f)
+        _promote(staging, out_dir)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+
 def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=None, duration=None):
-    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(out_dir)
+    attempt = out_dir.with_name(out_dir.name + ".attempts") / time.strftime("%Y%m%dT%H%M%S")
+    attempt.mkdir(parents=True, exist_ok=False)
     if not Path(ros2_bag_dir).exists():
         inc = " ".join(f"--include-topic {t}" for t in topics)
         subprocess.run(["bash", "-c", f"env -u PYTHONPATH .venv/bin/rosbags-convert --src {bag1} --dst {ros2_bag_dir} {inc}"], check=True)
     cfg_yaml = Path(cfg_yaml).resolve()
+    shutil.copy2(cfg_yaml, attempt / "fastlio_config.yaml")   # configuração efetiva desta tentativa
     extra = (f" --start-offset {start}" if start else "") + (f" --playback-duration {duration}" if duration else "")
-    with open(out_dir / "log.txt", "w") as log:
+    with open(attempt / "log.txt", "w") as log:
         node = subprocess.Popen(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
                                  f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}"], stdout=log, stderr=log)
         rec = subprocess.Popen(["bash", "-c", ROS + f"exec /usr/bin/python3 tools/fastlio_recorder.py "
-                                f"{out_dir / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
+                                f"{attempt / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
         try:
             time.sleep(5)
             subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}{extra}"],
@@ -54,14 +91,12 @@ def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=
                         p.wait(timeout=30)
                     except subprocess.TimeoutExpired:
                         p.kill()
-    raw_ts, raw_Ts = se3.load_tum(out_dir / "raw_odom.tum")
     end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
-    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns)
     commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
     meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True, "continuous_frame": True,
             "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
-            "start": start, "duration": duration, **info}
-    tracks.write_run(out_dir, ts, Ts, state, pd.DataFrame({"ts_ns": ts}), meta)
+            "start": start, "duration": duration}
+    finalize(attempt, out_dir, end_ns, meta)
 
 
 def main():
