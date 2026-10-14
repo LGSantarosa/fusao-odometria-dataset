@@ -104,6 +104,7 @@ def build(c, fastlio_template):
     ds = {
         "name": c["name"], "gt_quality": c["gt_quality"], "max_age_ms": 100, "var_window": 10,
         "image_encoding": "mono8", "topics": c["topics"], "point_time": c["point_time"],
+        "kissicp_deskew": c.get("kissicp_deskew", "auto"),
         "T_L_S": {"orbslam3": _flat(T_L_vo), "stella": _flat(T_L_vo),
                   "fastlio": _flat(se3.inv(np.asarray(c["T_imu_L"], float))), "kissicp": EYE},
         "stereo": {"K0": np.asarray(c["K0"], float).tolist(), "D0": _flat(c["D0"]),
@@ -190,6 +191,8 @@ def rellis_calib(bag):
                         "lidar": "/os1_cloud_node/points", "imu": "/os1_cloud_node/imu", "gt": "/gt_poses"},
                 point_time={"field": "t", "unit": "ns", "ref": "scan_start"},
                 fastlio={"lidar_type": 3, "scan_line": 64, "timestamp_unit": 3, "blind": 2.0},
+                # Evidência (docs/deskew_rellis.md): com deskew o KISS-ICP diverge do FAST-LIO e das rodas.
+                kissicp_deskew=False,
                 fastlio_template="ouster64.yaml")
 
 

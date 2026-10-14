@@ -40,3 +40,11 @@ def test_deskew_without_times_raises(tmp_path):
     seq, _ = make_seq(tmp_path, n=3, with_t=False)
     with pytest.raises(RuntimeError):
         run_kissicp.run(seq, tmp_path / "run", deskew=True)
+
+
+def test_resolve_deskew_respects_config_override():
+    # meta da extração diz que o tempo por ponto é válido, mas o dataset desliga o deskew do KISS-ICP
+    assert run_kissicp.resolve_deskew({"deskew": True}, "auto") is True
+    assert run_kissicp.resolve_deskew({"deskew": False}, "auto") is False
+    assert run_kissicp.resolve_deskew({"deskew": True}, False) is False
+    assert run_kissicp.resolve_deskew({"deskew": False}, True) is False   # nunca liga sem tempos válidos

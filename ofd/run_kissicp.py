@@ -8,7 +8,13 @@ import pandas as pd
 from kiss_icp.config import load_config
 from kiss_icp.kiss_icp import KissICP
 
-from ofd import tracks
+from ofd import config, tracks
+
+
+def resolve_deskew(extract_meta, override="auto"):
+    """Deskew só com tempo por ponto validado na extração; o dataset pode desligá-lo (config kissicp_deskew)."""
+    valid = bool(extract_meta.get("deskew", False))
+    return valid if override == "auto" else (valid and bool(override))
 
 
 def run(seq_dir, out_dir, deskew):
@@ -43,9 +49,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seq-dir", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--config", help="dataset.yaml (lê kissicp_deskew: auto|true|false)")
     a = ap.parse_args()
-    deskew = json.loads((Path(a.seq_dir) / "meta.json").read_text()).get("deskew", False)
-    run(a.seq_dir, a.out, deskew)
+    override = config.load(a.config).kissicp_deskew if a.config else "auto"
+    meta = json.loads((Path(a.seq_dir) / "meta.json").read_text())
+    run(a.seq_dir, a.out, resolve_deskew(meta, override))
 
 
 if __name__ == "__main__":
