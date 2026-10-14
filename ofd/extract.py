@@ -40,8 +40,8 @@ def image_to_array(msg):
 
 
 def gt_from_bag(bag, topic):
-    """PoseStamped topic of a separate GT bag -> (ts_ns, Ts), sorted."""
-    rows = []
+    """PoseStamped topic of a separate GT bag -> (ts_ns, Ts, n_dropped), sorted; non-finite poses are dropped."""
+    rows, dropped = [], 0
     with AnyReader([Path(bag)]) as r:
         conns = [c for c in r.connections if c.topic == topic]
         if not conns:
@@ -49,9 +49,13 @@ def gt_from_bag(bag, topic):
         for c, _, raw in r.messages(connections=conns):
             m = r.deserialize(raw, c.msgtype)
             p, q = m.pose.position, m.pose.orientation
-            rows.append((stamp_ns(m), se3.to_mat([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])))
+            v = np.array([p.x, p.y, p.z, q.x, q.y, q.z, q.w])
+            if not np.isfinite(v).all() or np.linalg.norm(v[3:]) < 1e-6:
+                dropped += 1   # ex.: BotanicGarden 1018-00 tem 1 quaternion NaN no GT oficial
+                continue
+            rows.append((stamp_ns(m), se3.to_mat(v[:3], v[3:])))
     rows.sort(key=lambda x: x[0])
-    return np.array([r[0] for r in rows], dtype=np.int64), np.stack([r[1] for r in rows])
+    return np.array([r[0] for r in rows], dtype=np.int64), np.stack([r[1] for r in rows]), dropped
 
 
 def _rectifier(cfg):
@@ -68,6 +72,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
         (out / d).mkdir(parents=True, exist_ok=True)
     tp = cfg.topics
     left, right, scans, deskew_ok = {}, {}, [], []
+    gt_dropped = 0
     rect = _rectifier(cfg)
     pending = {}  # ts -> {side: img}; retificação exige o par
     gt_rows = []
@@ -126,7 +131,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
     if gt_tum:
         ts_gt, Ts_gt = se3.load_tum(gt_tum)
     elif gt_bag:
-        ts_gt, Ts_gt = gt_from_bag(gt_bag, tp.get("gt", "/gt_poses"))
+        ts_gt, Ts_gt, gt_dropped = gt_from_bag(gt_bag, tp.get("gt", "/gt_poses"))
     elif gt_rows:
         gt_rows.sort(key=lambda x: x[0])
         ts_gt = np.array([g[0] for g in gt_rows], dtype=np.int64)
@@ -138,7 +143,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
     meta = {"bag": str(bag), "n_scans": len(scans), "n_stereo": len(pairs), "n_gt": int(len(ts_gt)),
             "point_time": cfg.point_time, "deskew_valid_frac": frac, "deskew": bool(deskew_ok) and frac == 1.0,
             "unpaired_left": len(set(left) - set(right)), "unpaired_right": len(set(right) - set(left)),
-            "rectified": rect.params() if rect is not None else None}
+            "rectified": rect.params() if rect is not None else None, "gt_dropped_nonfinite": gt_dropped}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     return meta
 

@@ -116,3 +116,17 @@ def test_extract_rectifies_when_stereo_calib_given(tmp_path):
     meta = extract.extract(bag, _cfg(stereo), tmp_path / "out", None, None, None)
     r = meta["rectified"]
     assert abs(r["baseline"] - 0.2) < 1e-9 and r["width"] == 6 and len(r["T_cam0_rect"]) == 16
+
+
+def test_gt_bag_drops_nonfinite_poses(tmp_path):
+    p = tmp_path / "gt.bag"; base = 1_700_000_000 * 10**9
+    with Writer(p) as w:
+        c = w.add_connection("/gt_poses", PoseStamped.__msgtype__, typestore=TS)
+        for k in range(4):
+            t = base + k * 100_000_000
+            q = Quaternion(x=float("nan"), y=float("nan"), z=float("nan"), w=float("nan")) if k == 2 else \
+                Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            m = PoseStamped(header=hdr(t), pose=Pose(position=Point(x=float(k), y=0.0, z=0.0), orientation=q))
+            w.write(c, t, TS.serialize_ros1(m, PoseStamped.__msgtype__))
+    ts, Ts, dropped = extract.gt_from_bag(p, "/gt_poses")
+    assert dropped == 1 and len(ts) == 3 and np.isfinite(Ts).all()
