@@ -145,6 +145,8 @@ def botanic_calib(calib_dir):
                 # VLP16 do bag: header no FIM do scan, time em s no intervalo [-0.0995, +0.0013] (inspecionado)
                 point_time={"field": "time", "unit": "s", "ref": "scan_end"},
                 fastlio={"lidar_type": 2, "scan_line": 16, "timestamp_unit": 0, "blind": 2.0, "scan_rate": 10},
+                # GT (docs/deskew_rellis.md): com deskew o RPE/frame do KISS-ICP piora (4,09 vs 2,45 cm).
+                kissicp_deskew=False,
                 fastlio_template="velodyne.yaml")
 
 

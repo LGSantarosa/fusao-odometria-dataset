@@ -14,7 +14,7 @@ point_time:
   field: time
   unit: s
   ref: scan_end
-kissicp_deskew: auto
+kissicp_deskew: false
 T_L_S:
   orbslam3:
   - 0.01717301610437917

@@ -21,3 +21,14 @@ scans casados) e é secundária: o FAST-LIO no RELLIS ainda não está validado 
 Causa raiz do pior desempenho com deskew: **desconhecida**.
 Decisão: `kissicp_deskew: false` no RELLIS (config), registrado em `run.json`. No BotanicGarden a escolha será
 feita com GT (RPE com e sem deskew).
+
+## BotanicGarden 1018-00 (VLP16, COM GT) — confirmação
+
+| KISS-ICP | ATE | RPE/frame (t / r) | RPE 10 m (t / r) |
+|---|---|---|---|
+| deskew = True | 0,132 m | 4,09 cm / 0,302° | 0,215 m / 1,77° |
+| deskew = False | 0,132 m | 2,45 cm / 0,219° | 0,195 m / 1,73° |
+
+O deskew piora o RPE em dois datasets com LiDARs diferentes (Ouster OS1-64 e Velodyne VLP16). Hipótese **não
+verificada**: as nuvens publicadas pelos drivers já estariam compensadas de movimento, e recompensar degrada.
+Decisão: `kissicp_deskew: false` também no BotanicGarden.
