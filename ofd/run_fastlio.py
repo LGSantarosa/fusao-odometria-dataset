@@ -16,19 +16,24 @@ from ofd.matching import match_monotonic
 ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
 
 
-def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9):
+def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9, imu_window=None):
+    """imu_window=(t0, t1): um LIO não pode estimar fora da cobertura da IMU; a fração mínima é exigida só
+    sobre os scans dentro dela (os de fora ficam ok=0 e são contados à parte)."""
     order = np.argsort(raw_ts, kind="stable")
     raw_ts, raw_Ts = np.asarray(raw_ts, np.int64)[order], raw_Ts[order]
     end_ns = np.sort(np.asarray(end_ns, np.int64))
     m = match_monotonic(end_ns, raw_ts, int(tol_ms * 1e6))
-    frac = float((m >= 0).mean()) if len(m) else 0.0
+    cov = np.ones(len(end_ns), bool) if imu_window is None else (end_ns >= imu_window[0]) & (end_ns <= imu_window[1])
+    frac = float((m[cov] >= 0).mean()) if cov.any() else 0.0
+    frac_all = float((m >= 0).mean()) if len(m) else 0.0
     if frac < min_match:
         near = [int(raw_ts[np.argmin(np.abs(raw_ts - e))] - e) for e in end_ns] if len(raw_ts) else [0]
         raise RuntimeError(f"só {frac:.1%} dos scans casaram com poses; mediana(pose - scan) = "
                            f"{np.median(near) / 1e6:.1f} ms — conferir timestamp_unit/end_ns")
     ok = (m >= 0).astype(int)
     state = pd.DataFrame({"ts_ns": end_ns, "ok": ok, "map_id": 0})
-    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "tol_ms": tol_ms}
+    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "matched_frac_all": frac_all,
+                                                         "n_scans_without_imu": int((~cov).sum()), "tol_ms": tol_ms}
 
 
 def _promote(staging, out_dir):
@@ -42,12 +47,19 @@ def _promote(staging, out_dir):
         shutil.rmtree(old)
 
 
-def finalize(attempt_dir, out_dir, end_ns, meta):
+def imu_window(ros2_bag, imu_topic):
+    from rosbags.highlevel import AnyReader
+    with AnyReader([Path(ros2_bag)]) as r:
+        ts = [t for c, t, _ in r.messages(connections=[c for c in r.connections if c.topic == imu_topic])]
+    return (int(min(ts)), int(max(ts))) if ts else None
+
+
+def finalize(attempt_dir, out_dir, end_ns, meta, imu_win=None):
     """Monta o formato comum a partir dos artefatos de UMA tentativa e promove atomicamente.
     Em falha, levanta e não toca em out_dir; a tentativa fica preservada para comparação."""
     attempt_dir, out_dir = Path(attempt_dir), Path(out_dir)
     raw_ts, raw_Ts = se3.load_tum(attempt_dir / "raw_odom.tum")
-    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns)
+    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns, imu_window=imu_win)
     staging = out_dir.with_name(out_dir.name + f".staging-{os.getpid()}")
     if staging.exists():
         shutil.rmtree(staging)
@@ -97,7 +109,7 @@ def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration
             "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
             "start": start, "duration": duration, "ros2_bag": str(ros2_bag_dir),
             "point_time": ds_cfg.point_time}
-    finalize(attempt, out_dir, end_ns, meta)
+    finalize(attempt, out_dir, end_ns, meta, imu_window(ros2_bag_dir, ds_cfg.topics["imu"]))
 
 
 def main():

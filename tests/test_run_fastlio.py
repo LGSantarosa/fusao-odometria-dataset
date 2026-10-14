@@ -65,3 +65,14 @@ def test_finalize_failure_keeps_previous_output(tmp_path):
     assert (out / "run.json").read_text() == '{"bom": true}'   # saída anterior intacta
     assert (att / "raw_odom.tum").exists()
     assert not any(p.name.startswith("fastlio.staging") for p in tmp_path.iterdir())
+
+
+def test_match_fraction_only_over_scans_with_imu_coverage():
+    end = np.arange(100) * 100 * MS
+    covered = (end >= 20 * 100 * MS) & (end <= 79 * 100 * MS)      # IMU só cobre os scans 20..79
+    raw = end[covered][:-3] + 1 * MS                                 # 57 de 60 cobertos têm pose
+    ts, Ts, st, info = run_fastlio.assemble(raw, poses(len(raw)), end, imu_window=(int(end[20]), int(end[79])))
+    assert len(st) == 100                                            # estado para todos os scans
+    assert abs(info["matched_frac"] - 57 / 60) < 1e-12
+    assert abs(info["matched_frac_all"] - 57 / 100) < 1e-12
+    assert info["n_scans_without_imu"] == 40
