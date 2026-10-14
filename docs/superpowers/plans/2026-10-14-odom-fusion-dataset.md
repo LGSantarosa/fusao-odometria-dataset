@@ -92,7 +92,7 @@ odom-fusion-dataset/
 ### Task 1: Ambiente Python e esqueleto do projeto
 
 **Files:**
-- Create: `pyproject.toml`, `ofd/__init__.py`, `tests/__init__.py`, `scripts/setup_env.sh`, `tests/test_smoke_import.py`
+- Create: `pyproject.toml`, `ofd/__init__.py`, `tests/__init__.py`, `scripts/setup_env.sh`, `scripts/test.sh`, `tests/test_smoke_import.py`
 
 **Interfaces:**
 - Produces: venv em `.venv/` com todas as dependências; pacote importável `ofd`.
@@ -107,7 +107,7 @@ requires-python = ">=3.12"
 dependencies = [
   "numpy>=1.26", "scipy>=1.11", "pandas>=2.1", "pyarrow>=15",
   "open3d>=0.19", "rosbags>=0.10", "kiss-icp>=1.2", "opencv-python-headless>=4.9",
-  "pyyaml>=6", "matplotlib>=3.8",
+  "pyyaml>=6", "matplotlib>=3.8", "gdown>=5.2",
 ]
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -135,6 +135,14 @@ fi
 .venv/bin/python -c "import sys, open3d, kiss_icp, rosbags, pandas; assert sys.version_info[:2] == (3, 12); print('env ok')"
 ```
 
+- [ ] **Step 2b: `scripts/test.sh`** — o `.bashrc` faz `source /opt/ros/jazzy/setup.bash`, e os plugins pytest do ROS (via `PYTHONPATH`) quebram o pytest do venv (`ModuleNotFoundError: lark`). Todos os testes rodam por este wrapper:
+
+```bash
+#!/usr/bin/env bash
+cd "$(dirname "$0")/.."
+exec env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest "$@"
+```
+
 - [ ] **Step 3: Teste de import** — `tests/test_smoke_import.py`
 
 ```python
@@ -146,13 +154,26 @@ def test_import():
 
 - [ ] **Step 4: Rodar**
 
-Run: `bash scripts/setup_env.sh && .venv/bin/pytest -q`
-Expected: `env ok` e `1 passed`.
+Run: `bash scripts/setup_env.sh && scripts/test.sh -q`
+Expected: `env ok` e `1 passed`; `requirements.lock` criado.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Checkpoint de reprodutibilidade** — recriar do zero **a partir do lock** e comparar:
 
 ```bash
-git add pyproject.toml requirements.lock ofd/__init__.py tests/__init__.py scripts/setup_env.sh tests/test_smoke_import.py
+mv .venv .venv.first
+bash scripts/setup_env.sh
+diff <(.venv.first/bin/pip freeze --exclude-editable) <(.venv/bin/pip freeze --exclude-editable) && echo "lock reproduz"
+scripts/test.sh -q
+rm -rf .venv.first
+{ echo "# Ambiente"; echo; echo "- Python: $(.venv/bin/python -V)"; echo "- SO: $(lsb_release -ds)";
+  echo "- Gerado em: $(date -I)"; echo; echo "Versões resolvidas: ver \`requirements.lock\`."; } > docs/ENV.md
+```
+Expected: `lock reproduz` e `1 passed`. **Não avançar para a Task 2 se a recriação pelo lock falhar.**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add pyproject.toml requirements.lock docs/ENV.md ofd/__init__.py tests/__init__.py scripts/setup_env.sh scripts/test.sh tests/test_smoke_import.py
 git commit -m "chore: ambiente python travado e esqueleto do pacote ofd"
 ```
 
@@ -261,7 +282,7 @@ def test_tum_roundtrip(tmp_path):
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `.venv/bin/pytest tests/test_se3.py -q`
+Run: `scripts/test.sh tests/test_se3.py -q`
 Expected: FAIL (`cannot import name 'se3'`).
 
 - [ ] **Step 3: Implementar `ofd/se3.py`**
@@ -379,7 +400,7 @@ def save_tum(path, ts_ns, Ts):
 
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `.venv/bin/pytest tests/test_se3.py -q`
+Run: `scripts/test.sh tests/test_se3.py -q`
 Expected: `9 passed`.
 
 - [ ] **Step 5: Commit**
@@ -465,7 +486,7 @@ def test_pose_on_lost_frame_is_dropped(tmp_path):
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `.venv/bin/pytest tests/test_tracks.py -q` → FAIL (import).
+Run: `scripts/test.sh tests/test_tracks.py -q` → FAIL (import).
 
 - [ ] **Step 3: Implementar `ofd/tracks.py`**
 
@@ -527,7 +548,7 @@ def write_run(run_dir, ts_ns, Ts, state_df, indicators_df, meta):
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 ```
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_tracks.py -q` → `4 passed`.
+- [ ] **Step 4: Rodar** — `scripts/test.sh tests/test_tracks.py -q` → `4 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -651,7 +672,7 @@ def test_errors_use_method_source_instants():
     assert e["err_t"].iloc[1] < 1e-9 and np.isnan(e["err_t"].iloc[0])
 ```
 
-- [ ] **Step 2: Rodar e ver falhar** — `.venv/bin/pytest tests/test_sync.py -q` → FAIL.
+- [ ] **Step 2: Rodar e ver falhar** — `scripts/test.sh tests/test_sync.py -q` → FAIL.
 
 - [ ] **Step 3: Implementar `ofd/sync.py`**
 
@@ -742,7 +763,7 @@ def method_errors(md, track: Track, T_L_S, gt_ts, gt_Ts):
 
 Nota: `method_errors` recebe `track`/`T_L_S` para manter a assinatura estável caso se queira recomputar a partir das poses; o ΔT já convertido vem de `md`.
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_sync.py -q` → `10 passed`.
+- [ ] **Step 4: Rodar** — `scripts/test.sh tests/test_sync.py -q` → `10 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -826,7 +847,7 @@ def test_monotonic_within_ring_even_if_rings_interleave():
     assert n is not None and info["monotonic_frac"] == 1.0
 ```
 
-- [ ] **Step 2: Rodar e ver falhar** — `.venv/bin/pytest tests/test_pointtime.py -q` → FAIL.
+- [ ] **Step 2: Rodar e ver falhar** — `scripts/test.sh tests/test_pointtime.py -q` → FAIL.
 
 - [ ] **Step 3: Implementar `ofd/pointtime.py`**
 
@@ -869,7 +890,7 @@ def normalize(t_raw, unit, ref, scan_stamp_ns, ring=None):
     return (rel - rel.min()) / (rel.max() - rel.min()), info
 ```
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_pointtime.py -q` → `8 passed`.
+- [ ] **Step 4: Rodar** — `scripts/test.sh tests/test_pointtime.py -q` → `8 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -974,7 +995,7 @@ def causal_rolling_var(s: pd.Series, H: int = 10) -> pd.Series:
     return s.rolling(window=H, min_periods=2).var()
 ```
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_indicators.py -q` → `3 passed`.
+- [ ] **Step 4: Rodar** — `scripts/test.sh tests/test_indicators.py -q` → `3 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -1068,7 +1089,7 @@ def assert_no_leak(schema):
         raise ValueError(f"GT-derived columns marked as feature: {bad}")
 ```
 
-- [ ] **Step 3: Rodar** — `.venv/bin/pytest tests/test_schema.py -q` → `2 passed`.
+- [ ] **Step 3: Rodar** — `scripts/test.sh tests/test_schema.py -q` → `2 passed`.
 
 - [ ] **Step 4: Testes do build** — `tests/test_build_dataset.py`
 
@@ -1255,7 +1276,7 @@ def load(path) -> DatasetConfig:
                          d.get("max_age_ms", 100.0), d.get("var_window", 10), d.get("image_encoding", "mono8"))
 ```
 
-- [ ] **Step 6: Rodar** — `.venv/bin/pytest tests/test_schema.py tests/test_build_dataset.py tests/test_config.py -q` → `7 passed`.
+- [ ] **Step 6: Rodar** — `scripts/test.sh tests/test_schema.py tests/test_build_dataset.py tests/test_config.py -q` → `7 passed`.
 
 - [ ] **Step 7: Commit**
 
@@ -1372,7 +1393,7 @@ def test_gt_path_length_ignores_nan():
     assert abs(evaluate.gt_path_length(df) - 1.0) < 1e-12
 ```
 
-- [ ] **Step 2: Rodar e ver falhar** — `.venv/bin/pytest tests/test_evaluate.py -q` → FAIL.
+- [ ] **Step 2: Rodar e ver falhar** — `scripts/test.sh tests/test_evaluate.py -q` → FAIL.
 
 - [ ] **Step 3: Implementar `ofd/evaluate.py`**
 
@@ -1537,7 +1558,7 @@ if __name__ == "__main__":
 
 Nota sobre `longest_s`: um passo válido k representa o movimento de `t[k−1]` a `t[k]`; por isso a duração de uma sequência de passos válidos k..j é `t[j] − t[k−1]` (no teste, passos 1..3 → `t[3] − t[0]` = 0,3 s).
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_evaluate.py -q` → `9 passed`.
+- [ ] **Step 4: Rodar** — `scripts/test.sh tests/test_evaluate.py -q` → `9 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -1556,7 +1577,7 @@ git commit -m "feat(evaluate): ATE por segmento elegível, RPE e cobertura na gr
 
 **Interfaces:**
 - Produces:
-  - `matching.match_monotonic(a_ns: ndarray[int64], b_ns: ndarray[int64], tol_ns: int) -> ndarray[int]` — para cada elemento de `a` (ordenado), índice em `b` (ordenado) ou −1; casamento **monotônico** (índices casados estritamente crescentes) e **um-para-um**, escolhendo o vizinho mais próximo dentro da tolerância.
+  - `matching.match_monotonic(a_ns: ndarray[int64], b_ns: ndarray[int64], tol_ns: int) -> ndarray[int]` — para cada elemento de `a` (ordenado), índice em `b` (ordenado) ou −1; casamento **monotônico** (índices casados estritamente crescentes) e **um-para-um**, **ótimo**: maximiza primeiro o nº de pares e, entre os máximos, minimiza a soma de |a−b|. Só pares dentro da tolerância são candidatos (poucos por elemento), resolvido por programação dinâmica com árvore de Fenwick de máximo sobre o índice de `b` — O(P log m), P = nº de pares candidatos.
   - `preflight_rellis.bag_scan_stamps(bag, topic) -> ndarray[int64]`
   - Veredito A/B/C em `docs/preflight_rellis.md`.
 
@@ -1590,33 +1611,107 @@ def test_monotonic_never_goes_back():
 
 def test_empty():
     assert match_monotonic(np.array([1, 2]), np.array([], dtype=np.int64), 5).tolist() == [-1, -1]
+
+
+def test_maximizes_pairs_before_error():
+    # guloso faria 100->100 e deixaria 101 sem par; o ótimo casa os dois
+    a = np.array([100, 101]) * MS
+    b = np.array([99, 100]) * MS
+    assert match_monotonic(a, b, 5 * MS).tolist() == [0, 1]
+
+
+def test_minimizes_error_among_max_matchings():
+    a = np.array([100]) * MS
+    b = np.array([97, 101, 104]) * MS
+    assert match_monotonic(a, b, 5 * MS).tolist() == [1]
+
+
+def test_brute_force_agreement():
+    import itertools
+    rng = np.random.default_rng(1)
+    for _ in range(200):
+        a = np.sort(rng.integers(0, 40, rng.integers(0, 6)))
+        b = np.sort(rng.integers(0, 40, rng.integers(0, 6)))
+        tol = 3
+        best = (0, 0)
+        for r in range(min(len(a), len(b)) + 1):
+            for ia in itertools.combinations(range(len(a)), r):
+                for ib in itertools.combinations(range(len(b)), r):
+                    d = [abs(int(a[i]) - int(b[j])) for i, j in zip(ia, ib)]
+                    if all(x <= tol for x in d):
+                        best = max(best, (r, -sum(d)))
+        m = match_monotonic(a, b, tol)
+        pairs = [(i, j) for i, j in enumerate(m) if j >= 0]
+        assert all(j1 < j2 for (_, j1), (_, j2) in zip(pairs, pairs[1:]))
+        got = (len(pairs), -sum(abs(int(a[i]) - int(b[j])) for i, j in pairs))
+        assert got == best, (a, b, m)
 ```
 
 - [ ] **Step 2: Implementar `ofd/matching.py`**
 
 ```python
-"""Monotonic one-to-one nearest-neighbour matching of timestamp sequences."""
+"""Optimal monotonic one-to-one matching of timestamp sequences.
+
+Maximizes the number of pairs, then minimizes the total |a-b|. Only pairs within tol are candidates.
+DP over a (in order) with a Fenwick tree of prefix-max over b's index; score = (count, -error).
+"""
 import numpy as np
+
+_NEG = (-1, 0)
+
+
+class _FenwickMax:
+    def __init__(self, n):
+        self.n = n
+        self.val = [_NEG] * (n + 1)
+        self.arg = [None] * (n + 1)
+
+    def update(self, i, v, arg):  # position i (0-based)
+        i += 1
+        while i <= self.n:
+            if v > self.val[i]:
+                self.val[i], self.arg[i] = v, arg
+            i += i & -i
+
+    def query(self, i):  # max over positions [0, i) ; returns (score, arg)
+        best, arg = (0, 0), None
+        while i > 0:
+            if self.val[i] > best:
+                best, arg = self.val[i], self.arg[i]
+            i -= i & -i
+        return best, arg
 
 
 def match_monotonic(a_ns, b_ns, tol_ns):
     a = np.asarray(a_ns, dtype=np.int64)
     b = np.asarray(b_ns, dtype=np.int64)
     out = np.full(len(a), -1, dtype=int)
-    last = -1
+    if len(a) == 0 or len(b) == 0:
+        return out
+    fw = _FenwickMax(len(b))
+    node = {}  # (i, j) -> (score, prev_node)
+    best_total, best_node = (0, 0), None
     for i, t in enumerate(a):
-        j = int(np.searchsorted(b, t))
-        cands = [c for c in (j - 1, j) if last < c < len(b)]
-        if not cands:
-            continue
-        c = min(cands, key=lambda c: abs(int(b[c]) - int(t)))
-        if abs(int(b[c]) - int(t)) <= tol_ns:
-            out[i] = c
-            last = c
+        lo = int(np.searchsorted(b, t - tol_ns, side="left"))
+        hi = int(np.searchsorted(b, t + tol_ns, side="right"))
+        row = []
+        for j in range(lo, hi):
+            prev_score, prev = fw.query(j)  # pares anteriores com índice de b < j (e de a < i)
+            score = (prev_score[0] + 1, prev_score[1] - abs(int(b[j]) - int(t)))
+            node[(i, j)] = (score, prev)
+            row.append((j, score))
+            if score > best_total:
+                best_total, best_node = score, (i, j)
+        for j, score in row:  # só depois da linha inteira: um elemento de a casa no máximo uma vez
+            fw.update(j, score, (i, j))
+    cur = best_node
+    while cur is not None:
+        out[cur[0]] = cur[1]
+        cur = node[cur][1]
     return out
 ```
 
-Run: `.venv/bin/pytest tests/test_matching.py -q` → `4 passed`.
+Run: `scripts/test.sh tests/test_matching.py -q` → `7 passed`.
 
 - [ ] **Step 3: Baixar só o pequeno** (para `data/raw/rellis/`):
   - exemplo full-stack merged 60 s (4,2 GB): Google Drive id `1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL`
@@ -1624,8 +1719,7 @@ Run: `.venv/bin/pytest tests/test_matching.py -q` → `4 passed`.
   - (se existir) arquivo de timestamps por scan da sequência — conferir no README (`Rellis_3D_os1_cloud_node_kitti_bin`, `poses`).
 
 ```bash
-.venv/bin/pip install gdown==5.2.0
-mkdir -p data/raw/rellis
+mkdir -p data/raw/rellis   # gdown já está no requirements.lock (Task 1)
 .venv/bin/gdown 1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL -O data/raw/rellis/example_fullstack.bag
 ```
 
@@ -1966,7 +2060,7 @@ if __name__ == "__main__":
 
 Nota sobre o GT do BotanicGarden: o arquivo GT-pose (TUM) rastreia o frame do VLP16 — passar via `--gt-tum`. Se a documentação exigir a relação hand-eye, aplicá-la num passo explícito e registrar em `meta.json` (`gt_frame_fix`). Pares estéreo: `stamps.csv` só contém timestamps presentes nos dois lados (BotanicGarden é sincronizado em hardware; se o RELLIS tiver offsets, casar por vizinho mais próximo ≤ 5 ms — ajustar `extract` se `unpaired_*` > 1%).
 
-- [ ] **Step 5: Rodar testes** — `.venv/bin/pytest tests/test_extract.py -q` → `2 passed`.
+- [ ] **Step 5: Rodar testes** — `scripts/test.sh tests/test_extract.py -q` → `2 passed`.
 
 - [ ] **Step 6: Extrair trecho real** (depois do download do 1018-00, Google/OneDrive):
 
@@ -2172,7 +2266,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Rodar** — `.venv/bin/pytest tests/test_run_kissicp.py tests/test_lidar_indicators.py -q` → `3 passed`.
+- [ ] **Step 5: Rodar** — `scripts/test.sh tests/test_run_kissicp.py tests/test_lidar_indicators.py -q` → `3 passed`.
 
 - [ ] **Step 6: Rodar no smoke real**
 
@@ -2410,7 +2504,7 @@ if __name__ == "__main__":
 
 > Conferir `rosbags-convert --help` (versão travada) e `ros2 bag play --help` (Jazzy: `--start-offset`, `--playback-duration`) antes do smoke. O `start`/`duration` do play deve ser o mesmo da extração; scans da extração fora da janela tocada aparecem como `ok=0` e o `assemble` falha se forem > 10% — usar exatamente a mesma janela.
 
-- [ ] **Step 6: Rodar testes** — `.venv/bin/pytest tests/test_fastlio_recorder_parse.py tests/test_run_fastlio.py -q` → `3 passed`.
+- [ ] **Step 6: Rodar testes** — `scripts/test.sh tests/test_fastlio_recorder_parse.py tests/test_run_fastlio.py -q` → `3 passed`.
 
 - [ ] **Step 7: Rodar no smoke** (mesmo trecho de 120 s do Task 10):
 
@@ -2672,7 +2766,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Run: `.venv/bin/pytest tests/test_run_vo.py -q` → `1 passed`.
+Run: `scripts/test.sh tests/test_run_vo.py -q` → `1 passed`.
 
 - [ ] **Step 7: Build e smoke**
 
@@ -2847,7 +2941,7 @@ Os `<…>` são valores lidos da calibração do dataset (mesmos usados no Task 
 bash scripts/build_stella.sh
 .venv/bin/python -m ofd.run_vo --method stella --seq-dir data/extracted/1018-00_smoke \
   --settings configs/botanic/stella.yaml --out data/runs/1018-00_smoke/stella
-.venv/bin/pytest tests/test_run_vo.py -q
+scripts/test.sh tests/test_run_vo.py -q
 ```
 Expected: `frames.csv` ~1200 linhas, maioria `ok=1`, `reproj_err` finito.
 
@@ -2932,7 +3026,7 @@ def check(df, schema, max_age_ms=100.0):
         assert not bad, f"{m}: features NaN em linhas válidas: {bad}"
 ```
 
-Run: `.venv/bin/pytest tests/test_contract.py -q` → `3 passed`.
+Run: `scripts/test.sh tests/test_contract.py -q` → `3 passed`.
 
 - [ ] **Step 3: Teste ponta a ponta sintético** — `tests/test_e2e_synthetic.py` (sem dados reais, sem skip): 4 métodos falsos com comportamentos distintos → `build_dataset` → `write_outputs` → `evaluate_sequence` → `contract.check`.
 
@@ -2986,7 +3080,7 @@ def test_e2e(tmp_path):
     np.testing.assert_allclose(df["gt_vx"].dropna(), 1.0, atol=1e-6)
 ```
 
-Run: `.venv/bin/pytest tests/test_e2e_synthetic.py -q` → `1 passed`. (Se falhar, o defeito está nas Tasks 3–8: corrigir lá, não aqui.)
+Run: `scripts/test.sh tests/test_e2e_synthetic.py -q` → `1 passed`. (Se falhar, o defeito está nas Tasks 3–8: corrigir lá, não aqui.)
 
 - [ ] **Step 4: `scripts/run_sequence.sh`**
 
@@ -3036,7 +3130,7 @@ def test_real_outputs_respect_contract():
 
 ```bash
 bash scripts/run_sequence.sh botanic 1018-00_smoke data/raw/botanic/1018-00.bag 0 120 data/raw/botanic/1018-00_gt.tum
-.venv/bin/pytest -q
+scripts/test.sh -q
 ```
 Expected: todos os testes passam (incluindo `test_real_outputs_respect_contract`, agora não pulado); `metrics.csv` com 4 linhas.
 
