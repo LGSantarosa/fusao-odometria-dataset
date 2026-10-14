@@ -1,6 +1,6 @@
 # Dataset de Odometrias para Fusão VO/LO — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Para quem executa:** execução nativa e sequencial, com revisão nos marcos das Tasks 4, 8, 10, 12 e 14. Se o ambiente tiver as skills `superpowers:executing-plans` / `superpowers:subagent-driven-development`, podem ser usadas (opcional). Passos em checkbox (`- [ ]`).
 
 **Goal:** Gerar, a partir de BotanicGarden e RELLIS-3D, uma tabela por sequência (10 Hz) com ΔT causal + indicadores de qualidade de ORB-SLAM3, Stella VSLAM, FAST-LIO2 e KISS-ICP, o ΔT do GT como rótulo, e métricas ATE/RPE/cobertura por método.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12 (numpy, scipy, pandas, pyarrow, open3d, rosbags, kiss-icp, opencv-python-headless, pyyaml, pytest), ROS 2 Jazzy (FAST-LIO, ros2 bag), C++17 (ORB-SLAM3 v1.0, stella_vslam), Ubuntu 24.04.
 
-**Spec:** `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md` (rev. 3, commit bbc0205)
+**Spec:** `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md` (rev. 4)
 
 ## Global Constraints
 
@@ -16,16 +16,23 @@
 - Frame comum = frame do LiDAR (VLP16 no BotanicGarden, OS1-64 no RELLIS). Troca de frame por conjugação: `ΔT_L = T_L_S · ΔT_S · T_L_S⁻¹`.
 - Quaternion (qx, qy, qz, qw) com **qw ≥ 0**.
 - Timestamps internos em **int64 nanossegundos**; arquivos TUM em segundos com 9 casas decimais.
+- Instante de disponibilidade do LiDAR = **`end_ns`** (header + deslocamento até o último ponto; = header se a semântica do tempo for desconhecida). **Grade = `end_ns`**. Poses de KISS-ICP e FAST-LIO têm timestamp = `end_ns` do scan casado. VO: timestamp da imagem.
 - Sincronização de métodos **estritamente causal**: última pose com `src_ts ≤ t_k`, sem interpolação, válida se `0 ≤ age_ms ≤ max_age_ms` (padrão **100**). `m_dt_ms = src_ts(k) − src_ts(k−1)`; `m_dt_ms = 0` → inválido.
+- `m_dt_ms` e `m_age_ms` são **features**; velocidade se(3) `m_vx..m_wz = log(ΔT)/dt` (m/s, rad/s) é feature; `gt_vx..gt_wz` é target.
+- Casamentos de timestamps (FAST-LIO pose↔scan, RELLIS scan↔pose) são **monotônicos e um-para-um** (`ofd/matching.py`), tolerância padrão 5 ms.
+- `state.csv` tem **uma linha por frame/scan de entrada**, inclusive os que não produziram pose (ok=0).
+- Falhas = transições ok 1→0 no `state.csv`; resets = nº de segmentos − 1. Amostra repetida/pose velha não é falha.
 - GT pode ser interpolado (linear + SLERP); `m_err_*` usa GT interpolado em `src_ts(k−1)` e `src_ts(k)`.
 - Toda transição entre `segment_id` diferentes → `m_valid = 0`.
 - Variância móvel **causal** (janela H só de passado), padrão H = 10.
 - Papéis de coluna: `metadata | feature | target | evaluation`; `gt_*` = target, `*_err_t|*_err_r` = evaluation.
 - VOs: estéreo, **sem IMU**, **loop closure desligado**. FAST-LIO: `uses_imu=true`. KISS-ICP: `uses_imu=false`.
-- Tempo por ponto normalizado em [0, 1]; deskew só se validação passar (duração do scan 80–120 ms), senão `deskew=false`.
+- Tempo por ponto normalizado em [0, 1]; validação por scan = span 80–120 ms **e** ≥ 99% de passos não decrescentes por ring; **deskew=true só se 100% dos scans passarem**; limites observados em `scans.csv`.
 - ATE: segmentos elegíveis ≥ 30 s **e** ≥ 20 m (GT); agregação `√(Σ nᵢ·RMSEᵢ² / Σ nᵢ)`.
 - Nada de Docker; tudo nativo. Um algoritmo por vez (RAM 15 GB).
-- Downloads completos (RELLIS 00000, BotanicGarden 1018-13) **retidos até o preflight do RELLIS (Task 9)**.
+- Reprodutibilidade: Python 3.12 com `requirements.lock` (pip freeze, commitado); commits fixos: Pangolin `7364b59a` (v0.9.1), ORB_SLAM3 `4452a3c4ab75`, g2o `e8df2004` (20230223_git), FBoW `c6e3c29e3332`, stella_vslam `e445b5452535`, FBoW_orb_vocab `708407ae4cd5`; FAST_LIO = commit do port local (`git -C … rev-parse HEAD`) registrado em `run.json`. Mudanças em código de terceiros só via `patches/*.patch`.
+- VOs alimentadas **respeitando os timestamps** (taxa `--rate`, padrão 1.0) — nada de rodar à velocidade máxima.
+- Downloads grandes do RELLIS (00000) **condicionados ao resultado do preflight (Task 9)**, que tem três saídas (A/B/C). BotanicGarden 1018-13 só depois dos smoke tests.
 - Métodos: nomes canônicos `orbslam3`, `stella`, `fastlio`, `kissicp`.
 
 ## Review Focus
@@ -75,8 +82,8 @@ odom-fusion-dataset/
 ## Formato de execução comum (contrato entre adaptadores e núcleo)
 
 `data/runs/<seq>/<method>/`:
-- `poses_causal.tum` — `ts_s x y z qx qy qz qw`, pose do **sensor do método** (câmera esquerda p/ VO, IMU/body p/ FAST-LIO, LiDAR p/ KISS-ICP) no mundo do método, **emitida no instante** do frame. Só frames com tracking OK.
-- `state.csv` — `ts_ns,ok,map_id` para **todo** frame processado (ok=0 quando perdido).
+- `poses_causal.tum` — `ts_s x y z qx qy qz qw`, pose do **sensor do método** (câmera esquerda p/ VO, IMU/body p/ FAST-LIO, LiDAR p/ KISS-ICP) no mundo do método, **emitida no instante** do frame. Só frames com tracking OK. Timestamp = instante de disponibilidade: `end_ns` do scan (LiDAR) ou timestamp da imagem (VO).
+- `state.csv` — `ts_ns,ok,map_id` com **uma linha por frame/scan de entrada**, inclusive os que não geraram pose (ok=0). Mesmo `ts_ns` usado em `poses_causal.tum`.
 - `indicators.csv` — `ts_ns,<colunas>`; VO: `inliers,n_features,reproj_err,tracked_ratio`; LiDAR: `fitness,inlier_rmse,unmatched_ratio,n_points`.
 - `run.json` — `{"method","uses_imu","sensor_frame","deskew","config","version","max_age_ms"}`.
 
@@ -85,7 +92,7 @@ odom-fusion-dataset/
 ### Task 1: Ambiente Python e esqueleto do projeto
 
 **Files:**
-- Create: `pyproject.toml`, `ofd/__init__.py`, `scripts/setup_env.sh`, `tests/test_smoke_import.py`
+- Create: `pyproject.toml`, `ofd/__init__.py`, `tests/__init__.py`, `scripts/setup_env.sh`, `tests/test_smoke_import.py`
 
 **Interfaces:**
 - Produces: venv em `.venv/` com todas as dependências; pacote importável `ofd`.
@@ -118,8 +125,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv .venv
 .venv/bin/pip install -U pip
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/python -c "import open3d, kiss_icp, rosbags, pandas; print('env ok')"
+if [ -f requirements.lock ]; then
+  .venv/bin/pip install -r requirements.lock
+  .venv/bin/pip install --no-deps -e .
+else
+  .venv/bin/pip install -e '.[dev]'
+  .venv/bin/pip freeze --exclude-editable > requirements.lock   # trava versões na 1ª instalação
+fi
+.venv/bin/python -c "import sys, open3d, kiss_icp, rosbags, pandas; assert sys.version_info[:2] == (3, 12); print('env ok')"
 ```
 
 - [ ] **Step 3: Teste de import** — `tests/test_smoke_import.py`
@@ -129,7 +142,7 @@ def test_import():
     import ofd  # noqa: F401
 ```
 
-`ofd/__init__.py`: vazio.
+`ofd/__init__.py` e `tests/__init__.py`: vazios (o segundo permite `from tests.test_x import helper` entre testes).
 
 - [ ] **Step 4: Rodar**
 
@@ -139,8 +152,8 @@ Expected: `env ok` e `1 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml ofd/__init__.py scripts/setup_env.sh tests/test_smoke_import.py
-git commit -m "chore: ambiente python e esqueleto do pacote ofd"
+git add pyproject.toml requirements.lock ofd/__init__.py tests/__init__.py scripts/setup_env.sh tests/test_smoke_import.py
+git commit -m "chore: ambiente python travado e esqueleto do pacote ofd"
 ```
 
 ---
@@ -159,6 +172,7 @@ git commit -m "chore: ambiente python e esqueleto do pacote ofd"
   - `conjugate(dT_S, T_L_S) -> ndarray(4,4)` = `T_L_S @ dT_S @ inv(T_L_S)`
   - `inv(T) -> ndarray(4,4)`
   - `rot_angle(T) -> float` (rad)
+  - `log_twist(T) -> ndarray(6)` `[vx,vy,vz,wx,wy,wz]` (logaritmo em se(3)); `exp_twist(xi) -> ndarray(4,4)`
   - `interp(ts_ns: ndarray[int64], Ts: ndarray(N,4,4), t_ns: int) -> ndarray(4,4) | None` (None fora do intervalo)
   - `load_tum(path) -> (ts_ns: ndarray[int64], Ts: ndarray(N,4,4))`
   - `save_tum(path, ts_ns, Ts) -> None`
@@ -223,6 +237,18 @@ def test_interp_midpoint_and_out_of_range():
     assert se3.interp(ts, np.stack([A, B]), -1) is None
 
 
+def test_twist_roundtrip_and_pure_translation():
+    T = rand_T(9)
+    np.testing.assert_allclose(se3.exp_twist(se3.log_twist(T)), T, atol=1e-9)
+    P = np.eye(4); P[:3, 3] = [1.0, 2.0, 3.0]
+    np.testing.assert_allclose(se3.log_twist(P), [1, 2, 3, 0, 0, 0], atol=1e-12)
+
+
+def test_twist_small_rotation_stable():
+    T = se3.to_mat([0.1, 0, 0], R.from_rotvec([0, 0, 1e-12]).as_quat())
+    assert np.all(np.isfinite(se3.log_twist(T)))
+
+
 def test_tum_roundtrip(tmp_path):
     ts = np.array([1_700_000_000_123_456_789, 1_700_000_000_223_456_789], dtype=np.int64)
     Ts = np.stack([rand_T(7), rand_T(8)])
@@ -282,6 +308,35 @@ def rot_angle(T):
     return float(np.linalg.norm(R.from_matrix(T[:3, :3]).as_rotvec()))
 
 
+def _hat(w):
+    return np.array([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]])
+
+
+def log_twist(T):
+    w = R.from_matrix(T[:3, :3]).as_rotvec()
+    th = np.linalg.norm(w)
+    W = _hat(w)
+    if th < 1e-8:
+        V_inv = np.eye(3) - 0.5 * W + W @ W / 12.0
+    else:
+        V_inv = np.eye(3) - 0.5 * W + (1 - th * np.sin(th) / (2 * (1 - np.cos(th)))) / th**2 * (W @ W)
+    return np.concatenate([V_inv @ T[:3, 3], w])
+
+
+def exp_twist(xi):
+    v, w = np.asarray(xi[:3], float), np.asarray(xi[3:], float)
+    th = np.linalg.norm(w)
+    W = _hat(w)
+    if th < 1e-8:
+        V = np.eye(3) + 0.5 * W
+    else:
+        V = np.eye(3) + (1 - np.cos(th)) / th**2 * W + (th - np.sin(th)) / th**3 * (W @ W)
+    T = np.eye(4)
+    T[:3, :3] = R.from_rotvec(w).as_matrix()
+    T[:3, 3] = V @ v
+    return T
+
+
 def interp(ts_ns, Ts, t_ns):
     ts_ns = np.asarray(ts_ns, dtype=np.int64)
     if len(ts_ns) == 0 or t_ns < ts_ns[0] or t_ns > ts_ns[-1]:
@@ -325,13 +380,13 @@ def save_tum(path, ts_ns, Ts):
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `.venv/bin/pytest tests/test_se3.py -q`
-Expected: `7 passed`.
+Expected: `9 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add ofd/se3.py tests/test_se3.py
-git commit -m "feat(se3): convenção de pose, ΔT, conjugação, SLERP e I/O TUM"
+git commit -m "feat(se3): convenção de pose, ΔT, conjugação, SLERP, log/exp se(3) e I/O TUM"
 ```
 
 ---
@@ -492,8 +547,8 @@ git commit -m "feat(tracks): formato comum de execução e segmentação por est
 **Interfaces:**
 - Consumes: `Track`, `se3.*`
 - Produces:
-  - `method_deltas(track: Track, grid_ns: ndarray[int64], T_L_S: ndarray(4,4), max_age_ms: float = 100.0) -> DataFrame` com colunas `dx,dy,dz,qx,qy,qz,qw,valid,src_ts,age_ms,dt_ms,segment_id,prev_src_ts` (uma linha por passo da grade; `src_ts=-1` se não há pose).
-  - `gt_deltas(gt_ts: ndarray[int64], gt_Ts, grid_ns) -> DataFrame` colunas `gt_dx..gt_qw` (NaN quando fora do GT ou k=0).
+  - `method_deltas(track: Track, grid_ns: ndarray[int64], T_L_S: ndarray(4,4), max_age_ms: float = 100.0) -> DataFrame` com colunas `dx,dy,dz,qx,qy,qz,qw,vx,vy,vz,wx,wy,wz,valid,src_ts,age_ms,dt_ms,segment_id,prev_src_ts` (uma linha por passo da grade; `src_ts=-1` se não há pose; `v*/w*` = `log_twist(ΔT)/(dt_ms/1000)`).
+  - `gt_deltas(gt_ts: ndarray[int64], gt_Ts, grid_ns) -> DataFrame` colunas `gt_dx..gt_qw, gt_vx..gt_wz` (NaN quando fora do GT ou k=0).
   - `method_errors(md: DataFrame, track: Track, T_L_S, gt_ts, gt_Ts) -> DataFrame` colunas `err_t, err_r` (NaN se inválido ou GT ausente). GT assumido já no frame do LiDAR.
 
 - [ ] **Step 1: Testes** — `tests/test_sync.py`
@@ -577,6 +632,15 @@ def test_gt_deltas_out_of_range_nan():
     np.testing.assert_allclose(g["gt_dx"].iloc[2:4], [1, 1])
 
 
+def test_twist_is_delta_over_dt():
+    tr = line_track([0, 95, 190])
+    md = sync.method_deltas(tr, np.array([0, 100, 200], dtype=np.int64) * MS, np.eye(4))
+    np.testing.assert_allclose(md["vx"].iloc[1:], 1 / 0.095)
+    np.testing.assert_allclose(md["wz"].iloc[1:], 0, atol=1e-12)
+    g = sync.gt_deltas(tr.ts_ns, tr.Ts, np.array([0, 95, 190], dtype=np.int64) * MS)
+    np.testing.assert_allclose(g["gt_vx"].iloc[1:], 1 / 0.095)
+
+
 def test_errors_use_method_source_instants():
     tr = line_track([0, 95])           # método: 1 m em 95 ms
     gt_ts = np.array([0, 95], dtype=np.int64) * MS
@@ -600,6 +664,7 @@ from ofd import se3
 from ofd.tracks import Track
 
 VEC = ["dx", "dy", "dz", "qx", "qy", "qz", "qw"]
+TW = ["vx", "vy", "vz", "wx", "wy", "wz"]
 
 
 def _causal_index(ts_ns, grid_ns):
@@ -611,7 +676,7 @@ def method_deltas(track: Track, grid_ns, T_L_S, max_age_ms=100.0):
     grid_ns = np.asarray(grid_ns, dtype=np.int64)
     idx = _causal_index(track.ts_ns, grid_ns)
     n = len(grid_ns)
-    out = {c: np.full(n, np.nan) for c in VEC}
+    out = {c: np.full(n, np.nan) for c in VEC + TW}
     src = np.where(idx >= 0, track.ts_ns[np.clip(idx, 0, None)] if len(track.ts_ns) else -1, -1)
     age = np.where(idx >= 0, (grid_ns - src) / 1e6, np.nan)
     seg = np.where(idx >= 0, track.segment[np.clip(idx, 0, None)] if len(track.ts_ns) else -1, -1)
@@ -630,6 +695,8 @@ def method_deltas(track: Track, grid_ns, T_L_S, max_age_ms=100.0):
         dT = se3.conjugate(se3.delta(track.Ts[i], track.Ts[j]), T_L_S)
         for c, v in zip(VEC, se3.to_vec(dT)):
             out[c][k] = v
+        for c, v in zip(TW, se3.log_twist(dT) / (dt[k] / 1000.0)):
+            out[c][k] = v
         valid[k] = 1
     df = pd.DataFrame(out)
     df["valid"] = valid
@@ -643,12 +710,15 @@ def method_deltas(track: Track, grid_ns, T_L_S, max_age_ms=100.0):
 
 def gt_deltas(gt_ts, gt_Ts, grid_ns):
     n = len(grid_ns)
-    out = {f"gt_{c}": np.full(n, np.nan) for c in VEC}
+    out = {f"gt_{c}": np.full(n, np.nan) for c in VEC + TW}
     prev = se3.interp(gt_ts, gt_Ts, int(grid_ns[0])) if n else None
     for k in range(1, n):
         cur = se3.interp(gt_ts, gt_Ts, int(grid_ns[k]))
         if prev is not None and cur is not None:
-            for c, v in zip(VEC, se3.to_vec(se3.delta(prev, cur))):
+            dT = se3.delta(prev, cur)
+            for c, v in zip(VEC, se3.to_vec(dT)):
+                out[f"gt_{c}"][k] = v
+            for c, v in zip(TW, se3.log_twist(dT) / ((grid_ns[k] - grid_ns[k - 1]) / 1e9)):
                 out[f"gt_{c}"][k] = v
         prev = cur
     return pd.DataFrame(out)
@@ -672,7 +742,7 @@ def method_errors(md, track: Track, T_L_S, gt_ts, gt_Ts):
 
 Nota: `method_errors` recebe `track`/`T_L_S` para manter a assinatura estável caso se queira recomputar a partir das poses; o ΔT já convertido vem de `md`.
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_sync.py -q` → `9 passed`.
+- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_sync.py -q` → `10 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -692,8 +762,8 @@ git commit -m "feat(sync): amostragem estritamente causal, ΔT por método, GT e
 **Interfaces:**
 - Produces:
   - `UNIT_TO_S = {"s":1.0,"ms":1e-3,"us":1e-6,"ns":1e-9}`
-  - `normalize(t_raw: ndarray, unit: str, ref: str, scan_stamp_ns: int) -> ndarray | None` — retorna tempos em [0, 1] ao longo do scan ou `None` se inválido. `ref ∈ {"scan_start","scan_end","absolute"}`.
-  - `span_ok(rel_s: ndarray, lo=0.08, hi=0.12) -> bool`
+  - `normalize(t_raw: ndarray, unit: str, ref: str, scan_stamp_ns: int, ring: ndarray|None = None) -> (t_norm: ndarray|None, info: dict)` — `t_norm` em [0, 1] ao longo do scan ou `None` se inválido; `info = {t_min_s, t_max_s, span_s, monotonic_frac, valid}` com tempos **relativos ao header** (s). `ref ∈ {"scan_start","scan_end","absolute"}`.
+  - Validação: `0.08 ≤ span_s ≤ 0.12` **e** `monotonic_frac ≥ 0.99`, onde `monotonic_frac` = fração de passos não decrescentes do tempo na ordem original dos pontos (ordem de disparo), calculada **dentro de cada ring** quando `ring` é dado.
 
 - [ ] **Step 1: Testes** — `tests/test_pointtime.py`
 
@@ -706,39 +776,57 @@ STAMP = 1_700_000_000_000_000_000
 
 def test_scan_start_seconds():
     t = np.linspace(0, 0.1, 1000)
-    n = pointtime.normalize(t, "s", "scan_start", STAMP)
+    n, info = pointtime.normalize(t, "s", "scan_start", STAMP)
     assert n.min() == 0 and abs(n.max() - 1) < 1e-9
+    assert info["valid"] and abs(info["t_max_s"] - 0.1) < 1e-9 and abs(info["span_s"] - 0.1) < 1e-9
 
 
 def test_scan_end_negative_offsets_microseconds():
     t = np.linspace(-100_000, 0, 1000)  # µs antes do stamp
-    n = pointtime.normalize(t, "us", "scan_end", STAMP)
+    n, info = pointtime.normalize(t, "us", "scan_end", STAMP)
     assert abs(n[0]) < 1e-9 and abs(n[-1] - 1) < 1e-9
+    assert abs(info["t_max_s"]) < 1e-9  # fim do scan = header
 
 
 def test_absolute_nanoseconds():
     t = STAMP + np.linspace(0, 100_000_000, 1000)
-    n = pointtime.normalize(t.astype(np.float64), "ns", "absolute", STAMP)
+    n, info = pointtime.normalize(t.astype(np.float64), "ns", "absolute", STAMP)
     assert abs(n.min()) < 1e-6 and abs(n.max() - 1) < 1e-6
+    assert abs(info["t_max_s"] - 0.1) < 1e-6
 
 
 def test_all_refs_same_normalization():
     base = np.linspace(0, 0.1, 500)
-    a = pointtime.normalize(base, "s", "scan_start", STAMP)
-    b = pointtime.normalize(base - 0.1, "s", "scan_end", STAMP)
+    a, _ = pointtime.normalize(base, "s", "scan_start", STAMP)
+    b, _ = pointtime.normalize(base - 0.1, "s", "scan_end", STAMP)
     np.testing.assert_allclose(a, b, atol=1e-9)
 
 
 def test_constant_times_rejected():
-    assert pointtime.normalize(np.zeros(1000), "s", "scan_start", STAMP) is None
+    n, info = pointtime.normalize(np.zeros(1000), "s", "scan_start", STAMP)
+    assert n is None and not info["valid"]
 
 
 def test_wrong_unit_rejected_by_span():
     t = np.linspace(0, 0.1, 1000)  # na verdade s, declarado ms -> span 0.1 ms
-    assert pointtime.normalize(t, "ms", "scan_start", STAMP) is None
+    assert pointtime.normalize(t, "ms", "scan_start", STAMP)[0] is None
+
+
+def test_shuffled_times_rejected_by_monotonicity():
+    t = np.random.default_rng(0).permutation(np.linspace(0, 0.1, 1000))
+    n, info = pointtime.normalize(t, "s", "scan_start", STAMP)
+    assert n is None and info["monotonic_frac"] < 0.99
+
+
+def test_monotonic_within_ring_even_if_rings_interleave():
+    # 16 rings armazenados ring a ring (cada ring varre 0..0.1 s): globalmente não monotônico
+    t = np.tile(np.linspace(0, 0.1, 100), 16)
+    ring = np.repeat(np.arange(16), 100)
+    n, info = pointtime.normalize(t, "s", "scan_start", STAMP, ring=ring)
+    assert n is not None and info["monotonic_frac"] == 1.0
 ```
 
-- [ ] **Step 2: Rodar e ver falhar.**
+- [ ] **Step 2: Rodar e ver falhar** — `.venv/bin/pytest tests/test_pointtime.py -q` → FAIL.
 
 - [ ] **Step 3: Implementar `ofd/pointtime.py`**
 
@@ -747,35 +835,47 @@ def test_wrong_unit_rejected_by_span():
 import numpy as np
 
 UNIT_TO_S = {"s": 1.0, "ms": 1e-3, "us": 1e-6, "ns": 1e-9}
+SPAN_LO, SPAN_HI, MONO_MIN = 0.08, 0.12, 0.99
 
 
-def span_ok(rel_s, lo=0.08, hi=0.12):
-    span = float(np.max(rel_s) - np.min(rel_s))
-    return lo <= span <= hi
+def _monotonic_frac(rel, ring):
+    if rel.size < 2:
+        return 0.0
+    if ring is None:
+        return float(np.mean(np.diff(rel) >= 0))
+    ok = tot = 0
+    for r in np.unique(ring):
+        d = np.diff(rel[ring == r])
+        ok += int(np.sum(d >= 0)); tot += d.size
+    return ok / tot if tot else 0.0
 
 
-def normalize(t_raw, unit, ref, scan_stamp_ns):
+def normalize(t_raw, unit, ref, scan_stamp_ns, ring=None):
+    info = {"t_min_s": np.nan, "t_max_s": np.nan, "span_s": np.nan, "monotonic_frac": 0.0, "valid": False}
     t = np.asarray(t_raw, dtype=np.float64)
-    if t.size == 0 or unit not in UNIT_TO_S:
-        return None
+    if t.size == 0 or unit not in UNIT_TO_S or ref not in ("scan_start", "scan_end", "absolute"):
+        return None, info
     if ref == "absolute":
         rel = t * UNIT_TO_S[unit] - scan_stamp_ns * 1e-9  # ns absoluto em float64: erro ~256 ns, irrelevante
-    elif ref in ("scan_start", "scan_end"):
-        rel = t * UNIT_TO_S[unit]
     else:
-        return None
-    if not np.all(np.isfinite(rel)) or not span_ok(rel):
-        return None
-    return (rel - rel.min()) / (rel.max() - rel.min())
+        rel = t * UNIT_TO_S[unit]  # relativo ao header (scan_end => valores <= 0)
+    if not np.all(np.isfinite(rel)):
+        return None, info
+    info.update(t_min_s=float(rel.min()), t_max_s=float(rel.max()), span_s=float(rel.max() - rel.min()),
+                monotonic_frac=_monotonic_frac(rel, None if ring is None else np.asarray(ring)))
+    info["valid"] = bool(SPAN_LO <= info["span_s"] <= SPAN_HI and info["monotonic_frac"] >= MONO_MIN)
+    if not info["valid"]:
+        return None, info
+    return (rel - rel.min()) / (rel.max() - rel.min()), info
 ```
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_pointtime.py -q` → `6 passed`.
+- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_pointtime.py -q` → `8 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add ofd/pointtime.py tests/test_pointtime.py
-git commit -m "feat(pointtime): normalização do tempo por ponto com validação de span"
+git commit -m "feat(pointtime): normalização do tempo por ponto com validação de span e monotonicidade por ring"
 ```
 
 ---
@@ -917,6 +1017,8 @@ def test_roles():
     assert s["stella_reproj_err_var_H"] == "feature"
     assert s["fastlio_src_ts"] == "metadata"
     assert s["fastlio_dt_ms"] == "feature"
+    assert s["fastlio_age_ms"] == "feature"
+    assert s["kissicp_vx"] == "feature" and s["gt_wz"] == "target"
     assert "orbslam3_fitness" not in s
 
 
@@ -937,6 +1039,7 @@ def test_leak_detection():
 """Column roles: metadata | feature | target | evaluation."""
 METHODS = {"orbslam3": "vo", "stella": "vo", "fastlio": "lo", "kissicp": "lo"}
 VEC = ["dx", "dy", "dz", "qx", "qy", "qz", "qw"]
+TW = ["vx", "vy", "vz", "wx", "wy", "wz"]
 VO_IND = ["inliers", "n_features", "reproj_err", "tracked_ratio"]
 LO_IND = ["fitness", "inlier_rmse", "unmatched_ratio", "n_points"]
 VAR_OF = {"vo": "reproj_err", "lo": "fitness"}
@@ -944,11 +1047,11 @@ VAR_OF = {"vo": "reproj_err", "lo": "fitness"}
 
 def build_schema(methods):
     s = {c: "metadata" for c in ["t", "seq", "dataset", "gt_quality"]}
-    s.update({f"gt_{c}": "target" for c in VEC})
+    s.update({f"gt_{c}": "target" for c in VEC + TW})
     for m, kind in methods.items():
-        for c in ["src_ts", "age_ms", "segment_id", "uses_imu"]:
+        for c in ["src_ts", "segment_id", "uses_imu"]:
             s[f"{m}_{c}"] = "metadata"
-        for c in VEC + ["valid", "dt_ms"]:
+        for c in VEC + TW + ["valid", "dt_ms", "age_ms"]:
             s[f"{m}_{c}"] = "feature"
         for c in (VO_IND if kind == "vo" else LO_IND):
             s[f"{m}_{c}"] = "feature"
@@ -982,7 +1085,7 @@ def fake_seq(tmp_path, n=50, empty=None):
     seq, runs = tmp_path / "ext", tmp_path / "runs"
     seq.mkdir()
     grid = (np.arange(n) * 100 * MS + 1_000 * MS).astype(np.int64)
-    pd.DataFrame({"ts_ns": grid}).to_csv(seq / "lidar_stamps.csv", index=False)
+    pd.DataFrame({"ts_ns": grid, "end_ns": grid}).to_csv(seq / "lidar_stamps.csv", index=False)
     Ts = np.stack([np.eye(4)] * n)
     for i in range(n):
         Ts[i][0, 3] = 0.5 * i
@@ -1042,7 +1145,7 @@ from ofd import config, indicators, schema, se3, sync, tracks
 
 def build_sequence(seq_dir, runs_dir, T_L_S, dataset, gt_quality, max_age_ms=100.0, H=10):
     seq_dir, runs_dir = Path(seq_dir), Path(runs_dir)
-    grid = pd.read_csv(seq_dir / "lidar_stamps.csv")["ts_ns"].to_numpy(np.int64)
+    grid = pd.read_csv(seq_dir / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)  # instante de disponibilidade
     gt_ts, gt_Ts = se3.load_tum(seq_dir / "gt.tum")
     df = pd.DataFrame({"t": grid, "seq": seq_dir.name, "dataset": dataset, "gt_quality": gt_quality})
     df = pd.concat([df, sync.gt_deltas(gt_ts, gt_Ts, grid)], axis=1)
@@ -1170,14 +1273,16 @@ git commit -m "feat(dataset): schema com papéis, checagem de vazamento e montag
 - Test: `tests/test_evaluate.py`
 
 **Interfaces:**
-- Consumes: `Track`, `se3.*`
+- Consumes: `Track`, `tracks.load_run`, `tracks.segments_from_state`, `se3.*`, `config.load`
 - Produces:
   - `umeyama_se3(src: ndarray(N,3), dst: ndarray(N,3)) -> ndarray(4,4)` (alinha src→dst, sem escala)
   - `segment_metrics(track: Track, T_L_S, gt_ts, gt_Ts, min_dur_s=30.0, min_len_m=20.0) -> DataFrame[segment, n, dur_s, len_m, eligible, ate_rmse]`
   - `aggregate_ate(seg_df) -> float` (NaN se nenhum elegível)
   - `rpe(track, T_L_S, gt_ts, gt_Ts, delta_m=10.0) -> dict{rpe_t_frame, rpe_r_frame, rpe_t_10m}`
-  - `coverage(df_seq: DataFrame, method: str) -> dict{coverage, n_failures, longest_s}`
-  - `evaluate_sequence(...) -> DataFrame` uma linha por método; CLI `python -m ofd.evaluate --seq-dir ... --runs-dir ... --table data/output/<seq>.parquet --config ... --out data/output/metrics.csv`
+  - `coverage(df_seq: DataFrame, method: str, state: DataFrame[ts_ns, ok, map_id]) -> dict{coverage, n_failures, n_resets, longest_s, longest_m}` — tudo na **grade**; falhas/resets vêm do **estado**; `longest_*` = maior sequência de passos válidos consecutivos do mesmo `segment_id`, em s (de `t[k−1]` a `t[j]`) e em m (soma de ‖gt_d(x,y,z)‖ nesses passos).
+  - `gt_path_length(df_seq) -> float` (soma de ‖gt_d(x,y,z)‖ na grade, NaN → 0)
+  - `evaluate_sequence(seq_dir, runs_dir, table, T_L_S, min_dur_s=30.0, min_len_m=20.0) -> DataFrame` uma linha por método, com `eligible_frac = min(1, Σ len_m elegíveis / gt_path_length)`.
+  - CLI: `python -m ofd.evaluate --seq-dir … --runs-dir … --table data/output/<seq>.parquet --config … --out data/output/metrics.csv`
 
 - [ ] **Step 1: Testes** — `tests/test_evaluate.py`
 
@@ -1185,7 +1290,7 @@ git commit -m "feat(dataset): schema com papéis, checagem de vazamento e montag
 import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
-from ofd import evaluate, se3
+from ofd import evaluate
 from ofd.tracks import Track
 
 S = 1_000_000_000
@@ -1208,7 +1313,7 @@ def test_umeyama_recovers_rigid():
 
 
 def test_perfect_track_zero_ate():
-    gt = straight(400, 0.1)  # 40 s, 40 m
+    gt = straight(400, 0.1)  # 39.9 s, 39.9 m
     sm = evaluate.segment_metrics(gt, np.eye(4), gt.ts_ns, gt.Ts)
     assert sm["eligible"].all() and sm["ate_rmse"].max() < 1e-9
 
@@ -1216,9 +1321,9 @@ def test_perfect_track_zero_ate():
 def test_short_segments_not_eligible():
     seg = [0] * 100 + [1] * 310
     tr = straight(410, 0.1, seg)
-    sm = evaluate.segment_metrics(tr, np.eye(4), tr.ts_ns, tr.Ts)
-    assert sm.set_index("segment").loc[0, "eligible"] == False  # 10 s
-    assert sm.set_index("segment").loc[1, "eligible"] == True   # 30.9 s, 30.9 m
+    sm = evaluate.segment_metrics(tr, np.eye(4), tr.ts_ns, tr.Ts).set_index("segment")
+    assert not sm.loc[0, "eligible"]   # 9.9 s
+    assert sm.loc[1, "eligible"]       # 30.9 s, 30.9 m
 
 
 def test_metrics_no_eligible_segment():
@@ -1232,21 +1337,47 @@ def test_aggregate_weighted_by_poses():
     assert abs(evaluate.aggregate_ate(sm) - np.sqrt((100 * 1 + 300 * 4) / 400)) < 1e-12
 
 
-def test_coverage_counts_failures_and_longest():
-    df = pd.DataFrame({"t": np.arange(10) * S // 10,
-                       "m_valid": [0, 1, 1, 1, 0, 0, 1, 1, 0, 1]})
-    c = evaluate.coverage(df, "m")
+def table(valid, seg=None):
+    n = len(valid)
+    return pd.DataFrame({"t": np.arange(n) * S // 10, "m_valid": valid,
+                         "m_segment_id": seg if seg is not None else [0] * n,
+                         "gt_dx": 0.5, "gt_dy": 0.0, "gt_dz": 0.0})
+
+
+def test_coverage_longest_and_failures_from_state():
+    df = table([0, 1, 1, 1, 0, 0, 1, 1, 0, 1])
+    state = pd.DataFrame({"ts_ns": range(6), "ok": [1, 1, 0, 1, 0, 1], "map_id": 0})
+    c = evaluate.coverage(df, "m", state)
     assert abs(c["coverage"] - 0.6) < 1e-12
-    assert c["n_failures"] == 2  # 1->0 transições
-    assert abs(c["longest_s"] - 0.3) < 1e-9
+    assert c["n_failures"] == 2 and c["n_resets"] == 2
+    assert abs(c["longest_s"] - 0.3) < 1e-9 and abs(c["longest_m"] - 1.5) < 1e-9
+
+
+def test_repeated_sample_is_not_failure():
+    # valid cai para 0 (amostra repetida) mas o estado nunca perdeu tracking
+    df = table([0, 1, 0, 1, 1])
+    state = pd.DataFrame({"ts_ns": range(5), "ok": 1, "map_id": 0})
+    assert evaluate.coverage(df, "m", state)["n_failures"] == 0
+
+
+def test_longest_breaks_on_segment_change():
+    df = table([0, 1, 1, 1, 1], seg=[0, 0, 0, 1, 1])
+    state = pd.DataFrame({"ts_ns": range(5), "ok": 1, "map_id": [0, 0, 0, 1, 1]})
+    c = evaluate.coverage(df, "m", state)
+    assert abs(c["longest_s"] - 0.2) < 1e-9
+
+
+def test_gt_path_length_ignores_nan():
+    df = table([0, 1, 1]); df.loc[0, "gt_dx"] = np.nan
+    assert abs(evaluate.gt_path_length(df) - 1.0) < 1e-12
 ```
 
-- [ ] **Step 2: Rodar e ver falhar.**
+- [ ] **Step 2: Rodar e ver falhar** — `.venv/bin/pytest tests/test_evaluate.py -q` → FAIL.
 
 - [ ] **Step 3: Implementar `ofd/evaluate.py`**
 
 ```python
-"""Per-method trajectory metrics: segment ATE (eligible only), RPE, coverage."""
+"""Per-method trajectory metrics: segment ATE (eligible only), RPE, coverage on the grid."""
 import argparse
 from pathlib import Path
 
@@ -1271,12 +1402,12 @@ def umeyama_se3(src, dst):
 
 def _to_lidar(Ts, T_L_S):
     Ti = se3.inv(T_L_S)
-    return np.stack([T @ Ti for T in Ts])
+    return np.stack([T @ Ti for T in Ts]) if len(Ts) else Ts
 
 
 def segment_metrics(track: Track, T_L_S, gt_ts, gt_Ts, min_dur_s=30.0, min_len_m=20.0):
     rows = []
-    est = _to_lidar(track.Ts, T_L_S) if len(track.ts_ns) else track.Ts
+    est = _to_lidar(track.Ts, T_L_S)
     for s in np.unique(track.segment):
         idx = np.flatnonzero(track.segment == s)
         pairs = [(i, se3.interp(gt_ts, gt_Ts, int(track.ts_ns[i]))) for i in idx]
@@ -1304,15 +1435,14 @@ def aggregate_ate(seg_df):
 
 
 def rpe(track: Track, T_L_S, gt_ts, gt_Ts, delta_m=10.0):
-    est = _to_lidar(track.Ts, T_L_S) if len(track.ts_ns) else track.Ts
-    et, er, e10 = [], [], []
+    est = _to_lidar(track.Ts, T_L_S)
     gts = [se3.interp(gt_ts, gt_Ts, int(t)) for t in track.ts_ns]
+    et, er, e10 = [], [], []
     for k in range(1, len(track.ts_ns)):
         if track.segment[k] != track.segment[k - 1] or gts[k] is None or gts[k - 1] is None:
             continue
         E = se3.delta(se3.delta(gts[k - 1], gts[k]), se3.delta(est[k - 1], est[k]))
         et.append(np.linalg.norm(E[:3, 3])); er.append(se3.rot_angle(E))
-    # RPE por distância: pares (i, j) no mesmo segmento com ~delta_m percorridos no GT
     for s in np.unique(track.segment):
         idx = [i for i in np.flatnonzero(track.segment == s) if gts[i] is not None]
         if len(idx) < 2:
@@ -1326,35 +1456,60 @@ def rpe(track: Track, T_L_S, gt_ts, gt_Ts, delta_m=10.0):
             i, j = idx[a], idx[b]
             E = se3.delta(se3.delta(gts[i], gts[j]), se3.delta(est[i], est[j]))
             e10.append(np.linalg.norm(E[:3, 3]))
-    rm = lambda x: float(np.sqrt(np.mean(np.square(x)))) if x else float("nan")
+
+    def rm(x):
+        return float(np.sqrt(np.mean(np.square(x)))) if x else float("nan")
     return {"rpe_t_frame": rm(et), "rpe_r_frame": rm(er), "rpe_t_10m": rm(e10)}
 
 
-def coverage(df_seq, method):
+def _step_len(df_seq):
+    return np.nan_to_num(np.linalg.norm(df_seq[["gt_dx", "gt_dy", "gt_dz"]].to_numpy(float), axis=1))
+
+
+def gt_path_length(df_seq):
+    return float(_step_len(df_seq).sum())
+
+
+def coverage(df_seq, method, state):
     v = df_seq[f"{method}_valid"].to_numpy().astype(int)
+    seg = df_seq[f"{method}_segment_id"].to_numpy()
     t = df_seq["t"].to_numpy(np.int64)
-    n_fail = int(np.sum((v[:-1] == 1) & (v[1:] == 0)))
-    longest_steps = run = 0
-    for x in v:
-        run = run + 1 if x else 0
-        longest_steps = max(longest_steps, run)
-    period = (t[1] - t[0]) / 1e9 if len(t) > 1 else 0.0
-    return {"coverage": float(v.mean()) if len(v) else 0.0, "n_failures": n_fail,
-            "longest_s": longest_steps * period}
+    step = _step_len(df_seq)
+    st = state.sort_values("ts_ns")
+    ok = st["ok"].to_numpy().astype(int)
+    n_fail = int(np.sum((ok[:-1] == 1) & (ok[1:] == 0)))
+    segs = tracks.segments_from_state(st)["segment"]
+    n_resets = max(0, int(segs[segs >= 0].nunique()) - 1)
+    best_s = best_m = 0.0
+    start = None
+    for k in range(len(v)):
+        cont = v[k] == 1 and (start is not None and seg[k] == seg[k - 1])
+        if v[k] == 1 and not cont:
+            start = k
+        if v[k] != 1:
+            start = None
+            continue
+        best_s = max(best_s, (t[k] - t[start - 1]) / 1e9 if start > 0 else 0.0)
+        best_m = max(best_m, float(step[start:k + 1].sum()))
+    return {"coverage": float(v.mean()) if len(v) else 0.0, "n_failures": n_fail, "n_resets": n_resets,
+            "longest_s": best_s, "longest_m": best_m}
 
 
 def evaluate_sequence(seq_dir, runs_dir, table, T_L_S, min_dur_s=30.0, min_len_m=20.0):
     gt_ts, gt_Ts = se3.load_tum(Path(seq_dir) / "gt.tum")
+    total = gt_path_length(table)
     rows = []
     for m in schema.METHODS:
-        tr, _, meta = tracks.load_run(Path(runs_dir) / m)
+        run = Path(runs_dir) / m
+        tr, _, meta = tracks.load_run(run)
         sm = segment_metrics(tr, T_L_S[m], gt_ts, gt_Ts, min_dur_s, min_len_m)
         el = sm[sm["eligible"]]
         rows.append({"seq": Path(seq_dir).name, "method": m, "uses_imu": meta.get("uses_imu", False),
                      "ate_rmse": aggregate_ate(sm),
-                     "eligible_frac": float(el["n"].sum() / max(len(table), 1)),
+                     "eligible_frac": min(1.0, float(el["len_m"].sum() / total)) if total > 0 else 0.0,
                      "n_segments": len(sm), "n_eligible": len(el),
-                     **rpe(tr, T_L_S[m], gt_ts, gt_Ts), **coverage(table, m)})
+                     **rpe(tr, T_L_S[m], gt_ts, gt_Ts),
+                     **coverage(table, m, pd.read_csv(run / "state.csv"))})
     return pd.DataFrame(rows)
 
 
@@ -1380,38 +1535,101 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_evaluate.py -q` → `6 passed`.
+Nota sobre `longest_s`: um passo válido k representa o movimento de `t[k−1]` a `t[k]`; por isso a duração de uma sequência de passos válidos k..j é `t[j] − t[k−1]` (no teste, passos 1..3 → `t[3] − t[0]` = 0,3 s).
+
+- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_evaluate.py -q` → `9 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add ofd/evaluate.py tests/test_evaluate.py
-git commit -m "feat(evaluate): ATE por segmento elegível, RPE e cobertura"
+git commit -m "feat(evaluate): ATE por segmento elegível, RPE e cobertura na grade com falhas do estado"
 ```
 
 ---
 
-### Task 9: Preflight do GT do RELLIS-3D (gate dos downloads grandes)
+### Task 9: `ofd/matching.py` + preflight do GT do RELLIS-3D (gate dos downloads do RELLIS)
 
 **Files:**
-- Create: `ofd/preflight_rellis.py`, `docs/preflight_rellis.md` (resultado)
-- Test: manual (resultado documentado) + `tests/test_preflight_rellis.py` para o matcher
+- Create: `ofd/matching.py`, `ofd/preflight_rellis.py`, `docs/preflight_rellis.md` (resultado)
+- Test: `tests/test_matching.py`
 
 **Interfaces:**
-- Produces: `match_scans(bag_scan_ts_ns: ndarray, pose_scan_ts_ns: ndarray, tol_ms=5.0) -> ndarray[int]` (índice da pose para cada scan do bag, −1 se não casa) e o veredito em `docs/preflight_rellis.md`.
+- Produces:
+  - `matching.match_monotonic(a_ns: ndarray[int64], b_ns: ndarray[int64], tol_ns: int) -> ndarray[int]` — para cada elemento de `a` (ordenado), índice em `b` (ordenado) ou −1; casamento **monotônico** (índices casados estritamente crescentes) e **um-para-um**, escolhendo o vizinho mais próximo dentro da tolerância.
+  - `preflight_rellis.bag_scan_stamps(bag, topic) -> ndarray[int64]`
+  - Veredito A/B/C em `docs/preflight_rellis.md`.
 
-- [ ] **Step 1: Baixar só o pequeno** (para `data/raw/rellis/`):
-  - exemplo full-stack merged 60 s (4,2 GB): Google Drive id `1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL`
-  - "Ouster LiDAR Scan Poses files" (174 MB) — link na seção *Download* do README do RELLIS-3D
-  - (se existir) arquivo de timestamps por scan da sequência — conferir no README de `Rellis_3D_os1_cloud_node_kitti_bin` / `poses`.
+- [ ] **Step 1: Testes** — `tests/test_matching.py`
 
-```bash
-.venv/bin/pip install gdown
-mkdir -p data/raw/rellis && cd data/raw/rellis
-../../../.venv/bin/gdown 1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL -O example_fullstack.bag
+```python
+import numpy as np
+from ofd.matching import match_monotonic
+
+MS = 1_000_000
+
+
+def test_basic_tolerance():
+    a = np.array([100, 200, 300]) * MS
+    b = np.array([99, 201, 500]) * MS
+    assert match_monotonic(a, b, 5 * MS).tolist() == [0, 1, -1]
+
+
+def test_one_to_one():
+    a = np.array([100, 101]) * MS
+    b = np.array([100]) * MS
+    assert match_monotonic(a, b, 5 * MS).tolist() == [0, -1]
+
+
+def test_monotonic_never_goes_back():
+    a = np.array([100, 104]) * MS
+    b = np.array([103, 99]) * MS  # b fora de ordem é ordenado pelo chamador; aqui já ordenado errado de propósito
+    m = match_monotonic(a, np.sort(b), 5 * MS)
+    assert m.tolist() == [0, 1]
+
+
+def test_empty():
+    assert match_monotonic(np.array([1, 2]), np.array([], dtype=np.int64), 5).tolist() == [-1, -1]
 ```
 
-- [ ] **Step 2: Inspecionar** — tópicos e janela de tempo do bag; formato do `poses.txt` (KITTI 3×4 por linha?) e se existe arquivo de tempos por scan.
+- [ ] **Step 2: Implementar `ofd/matching.py`**
+
+```python
+"""Monotonic one-to-one nearest-neighbour matching of timestamp sequences."""
+import numpy as np
+
+
+def match_monotonic(a_ns, b_ns, tol_ns):
+    a = np.asarray(a_ns, dtype=np.int64)
+    b = np.asarray(b_ns, dtype=np.int64)
+    out = np.full(len(a), -1, dtype=int)
+    last = -1
+    for i, t in enumerate(a):
+        j = int(np.searchsorted(b, t))
+        cands = [c for c in (j - 1, j) if last < c < len(b)]
+        if not cands:
+            continue
+        c = min(cands, key=lambda c: abs(int(b[c]) - int(t)))
+        if abs(int(b[c]) - int(t)) <= tol_ns:
+            out[i] = c
+            last = c
+    return out
+```
+
+Run: `.venv/bin/pytest tests/test_matching.py -q` → `4 passed`.
+
+- [ ] **Step 3: Baixar só o pequeno** (para `data/raw/rellis/`):
+  - exemplo full-stack merged 60 s (4,2 GB): Google Drive id `1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL`
+  - "Ouster LiDAR Scan Poses files" (174 MB) — link na seção *Download* do README do RELLIS-3D
+  - (se existir) arquivo de timestamps por scan da sequência — conferir no README (`Rellis_3D_os1_cloud_node_kitti_bin`, `poses`).
+
+```bash
+.venv/bin/pip install gdown==5.2.0
+mkdir -p data/raw/rellis
+.venv/bin/gdown 1qSeOoY6xbQGjcrZycgPM8Ty37eKDjpJL -O data/raw/rellis/example_fullstack.bag
+```
+
+- [ ] **Step 4: Inspecionar** — tópicos e janela de tempo do bag; formato do `poses.txt` (KITTI 3×4 por linha?); de qual sequência é o exemplo; se existe arquivo de tempos por scan; o que o README/paper diz sobre a **origem** do `poses.txt`.
 
 ```bash
 .venv/bin/python -c "
@@ -1423,37 +1641,17 @@ with AnyReader([Path('data/raw/rellis/example_fullstack.bag')]) as r:
 ls -R data/raw/rellis | head -50
 ```
 
-- [ ] **Step 3: Teste do matcher** — `tests/test_preflight_rellis.py`
+- [ ] **Step 5: Implementar `ofd/preflight_rellis.py`**
 
 ```python
-import numpy as np
-from ofd.preflight_rellis import match_scans
-
-
-def test_match_with_tolerance():
-    bag = np.array([100, 200, 300], dtype=np.int64) * 1_000_000
-    poses = np.array([99, 201, 500], dtype=np.int64) * 1_000_000
-    assert match_scans(bag, poses, tol_ms=5).tolist() == [0, 1, -1]
-```
-
-- [ ] **Step 4: Implementar `ofd/preflight_rellis.py`**
-
-```python
-"""Prove (or refute) the mapping RELLIS-3D bag scans -> poses.txt entries."""
+"""Prove (or refute) the mapping RELLIS-3D bag scans -> poses.txt entries (monotonic, one-to-one)."""
 import argparse
 from pathlib import Path
 
 import numpy as np
 from rosbags.highlevel import AnyReader
 
-
-def match_scans(bag_ts, pose_ts, tol_ms=5.0):
-    pose_ts = np.asarray(pose_ts, dtype=np.int64)
-    out = []
-    for t in bag_ts:
-        j = int(np.argmin(np.abs(pose_ts - t))) if len(pose_ts) else -1
-        out.append(j if j >= 0 and abs(pose_ts[j] - t) <= tol_ms * 1e6 else -1)
-    return np.array(out, dtype=int)
+from ofd.matching import match_monotonic
 
 
 def bag_scan_stamps(bag, topic="/os1_cloud_node/points"):
@@ -1463,33 +1661,36 @@ def bag_scan_stamps(bag, topic="/os1_cloud_node/points"):
         for c, _, raw in r.messages(connections=conns):
             h = r.deserialize(raw, c.msgtype).header.stamp
             out.append(h.sec * 1_000_000_000 + h.nanosec)
-    return np.array(out, dtype=np.int64)
+    return np.sort(np.array(out, dtype=np.int64))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bag", required=True)
-    ap.add_argument("--pose-times", required=True, help="arquivo com 1 timestamp (s) por linha, alinhado ao poses.txt")
+    ap.add_argument("--pose-times", required=True, help="1 timestamp (s) por linha, alinhado linha a linha ao poses.txt")
+    ap.add_argument("--tol-ms", type=float, default=5.0)
     a = ap.parse_args()
     b = bag_scan_stamps(a.bag)
-    p = (np.loadtxt(a.pose_times) * 1e9).astype(np.int64)
-    m = match_scans(b, p)
-    print(f"scans no bag: {len(b)}  casados: {(m >= 0).sum()}  primeiro idx: {m[m >= 0][:1]}")
+    p = np.sort((np.loadtxt(a.pose_times) * 1e9).astype(np.int64))
+    m = match_monotonic(b, p, int(a.tol_ms * 1e6))
+    frac = float((m >= 0).mean()) if len(m) else 0.0
+    print(f"scans no bag: {len(b)}  casados: {(m >= 0).sum()} ({frac:.1%})  idx poses: {m[m >= 0][:1]}..{m[m >= 0][-1:]}")
 
 
 if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Rodar e decidir.** Se houver arquivo de tempos por scan para a sequência do exemplo, rodar `python -m ofd.preflight_rellis --bag ... --pose-times ...`. Escrever `docs/preflight_rellis.md` com: origem do `poses.txt` (o que o README/paper diz), formato, se existe mapeamento, % casado.
-  - **Passou** (≥ 95% dos scans casados): liberar download do RELLIS 00000.
-  - **Não passou**: smoke do exemplo vai até o schema **sem métricas de GT** (`gt.tum` vazio → `gt_*` NaN); RELLIS end-to-end só com a 00000.
+- [ ] **Step 6: Rodar e decidir** — escrever `docs/preflight_rellis.md` com: origem do `poses.txt`, formato, a que sequência pertence o exemplo, existência de tempos por scan, % casado. Veredito:
+  - **A — amostra mapeável** (≥ 95% dos scans do exemplo casados um-para-um): smoke do RELLIS com GT; **liberar** download da 00000.
+  - **B — amostra não mapeável, mas a sequência completa resolve** (ex.: tempos por scan só existem para a 00000 inteira, ou o exemplo é um recorte cujo deslocamento de índice é recuperável na sequência completa): smoke de 60 s **sem métricas de GT** (`gt.tum` vazio → `gt_*` NaN); **liberar só** a 00000 e repetir o preflight nela antes de usar o GT.
+  - **C — GT incompatível / não verificável** (não há timestamps nem forma de casar): RELLIS **sai da etapa supervisionada**; pode ser processado sem GT para análise qualitativa; o artigo segue com BotanicGarden. Avisar o usuário.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add ofd/preflight_rellis.py tests/test_preflight_rellis.py docs/preflight_rellis.md
-git commit -m "chore(rellis): preflight do mapeamento scan->pose do GT"
+git add ofd/matching.py ofd/preflight_rellis.py tests/test_matching.py docs/preflight_rellis.md
+git commit -m "feat: casamento monotônico 1:1 de timestamps e preflight do GT do RELLIS"
 ```
 
 ---
@@ -1504,7 +1705,7 @@ git commit -m "chore(rellis): preflight do mapeamento scan->pose do GT"
 - Consumes: `config.load` / `DatasetConfig` (Task 7), `pointtime.normalize`, `se3`
 - Produces:
   - `extract.extract(bag: Path, cfg: DatasetConfig, out: Path, t0_s: float|None, dur_s: float|None, gt_tum: Path|None) -> dict meta`
-  - Saída: `out/images/{left,right}/<ts_ns>.png`, `out/images/stamps.csv` (pares esquerdo/direito), `out/clouds/<ts_ns>.npz` (x,y,z,intensity,ring?,t_norm?), `out/lidar_stamps.csv`, `out/gt.tum` (no frame do LiDAR), `out/meta.json`.
+  - Saída: `out/images/{left,right}/<ts_ns>.png`, `out/images/stamps.csv` (pares esquerdo/direito), `out/clouds/<ts_ns>.npz` (xyz, intensity?, ring?, t_norm? — chave = header), `out/lidar_stamps.csv` (`ts_ns` = header, `end_ns` = header + `t_max_s` do scan, ou header se a semântica for desconhecida), `out/scans.csv` (`ts_ns,end_ns,t_min_s,t_max_s,span_s,monotonic_frac,valid`), `out/gt.tum` (no frame do LiDAR), `out/meta.json` (`deskew` = **todos** os scans válidos).
   - CLI: `python -m ofd.extract --bag <bag> --config configs/<ds>/dataset.yaml --out data/extracted/<seq> [--start S --duration S] [--gt-tum file]`
 
 - [ ] **Step 1: Escrever `configs/botanic/dataset.yaml`**
@@ -1616,6 +1817,26 @@ def test_extract(tmp_path):
     z = np.load(sorted((tmp_path / "out/clouds").glob("*.npz"))[0])
     assert {"xyz", "intensity", "t_norm"} <= set(z.files)
     assert meta["deskew"] is True and meta["n_scans"] == 3
+    st = __import__("pandas").read_csv(tmp_path / "out/lidar_stamps.csv")
+    assert ((st["end_ns"] - st["ts_ns"]) > 90_000_000).all()  # end = header + ~0.1 s (ref scan_start)
+    assert (tmp_path / "out/scans.csv").exists()
+
+
+def test_extract_one_bad_scan_disables_deskew(tmp_path, monkeypatch):
+    bag = tmp_path / "x.bag"; make_bag(bag)
+    calls = {"n": 0}
+    real = extract.pointtime.normalize
+
+    def flaky(*a, **k):
+        calls["n"] += 1
+        return (None, {"t_min_s": 0, "t_max_s": 0, "span_s": 0, "monotonic_frac": 0, "valid": False}) \
+            if calls["n"] == 2 else real(*a, **k)
+    monkeypatch.setattr(extract.pointtime, "normalize", flaky)
+    cfg = config.DatasetConfig("x", "survey", {"left": "/l", "right": "/r", "lidar": "/p", "imu": "/i", "gt": "/g"},
+                               {"field": "time", "unit": "s", "ref": "scan_start"},
+                               {m: np.eye(4) for m in ["orbslam3", "stella", "fastlio", "kissicp"]})
+    meta = extract.extract(bag, cfg, tmp_path / "out", None, None, None)
+    assert meta["deskew"] is False and meta["deskew_valid_frac"] < 1.0
 ```
 
 - [ ] **Step 4: Implementar `ofd/extract.py`**
@@ -1691,20 +1912,25 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
                 if "ring" in names:
                     rec["ring"] = a["ring"][fin].astype(np.int16)
                 f = cfg.point_time.get("field")
-                tn = None
+                tn, info = None, {"t_min_s": np.nan, "t_max_s": np.nan, "span_s": np.nan,
+                                  "monotonic_frac": 0.0, "valid": False}
                 if f and f in names:
-                    tn = pointtime.normalize(a[f][fin], cfg.point_time["unit"], cfg.point_time["ref"], ts)
+                    ring = a["ring"][fin] if "ring" in names else None
+                    tn, info = pointtime.normalize(a[f][fin], cfg.point_time["unit"], cfg.point_time["ref"], ts, ring)
                 if tn is not None:
                     rec["t_norm"] = tn.astype(np.float32)
                 deskew_ok.append(tn is not None)
+                end = ts + int(round(info["t_max_s"] * 1e9)) if info["valid"] else ts
                 np.savez_compressed(out / "clouds" / f"{ts}.npz", **rec)
-                scans.append(ts)
+                scans.append({"ts_ns": ts, "end_ns": end, **info})
             elif c.topic == tp.get("gt"):
                 p, q = m.pose.position, m.pose.orientation
                 gt_rows.append((ts, se3.to_mat([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])))
     pairs = sorted(set(left) & set(right))
     pd.DataFrame({"ts_ns": pairs}).to_csv(out / "images" / "stamps.csv", index=False)
-    pd.DataFrame({"ts_ns": sorted(scans)}).to_csv(out / "lidar_stamps.csv", index=False)
+    sc = pd.DataFrame(scans).sort_values("ts_ns")
+    sc.to_csv(out / "scans.csv", index=False)
+    sc[["ts_ns", "end_ns"]].to_csv(out / "lidar_stamps.csv", index=False)
     if gt_tum:
         ts_gt, Ts_gt = se3.load_tum(gt_tum)
     elif gt_rows:
@@ -1716,7 +1942,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
     se3.save_tum(out / "gt.tum", ts_gt, Ts_gt)  # GT já no frame do LiDAR (ver docs do dataset)
     frac = float(np.mean(deskew_ok)) if deskew_ok else 0.0
     meta = {"bag": str(bag), "n_scans": len(scans), "n_stereo": len(pairs), "n_gt": int(len(ts_gt)),
-            "point_time": cfg.point_time, "deskew_valid_frac": frac, "deskew": frac >= 0.95,
+            "point_time": cfg.point_time, "deskew_valid_frac": frac, "deskew": bool(deskew_ok) and frac == 1.0,
             "unpaired_left": len(set(left) - set(right)), "unpaired_right": len(set(right) - set(left))}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     return meta
@@ -1740,7 +1966,7 @@ if __name__ == "__main__":
 
 Nota sobre o GT do BotanicGarden: o arquivo GT-pose (TUM) rastreia o frame do VLP16 — passar via `--gt-tum`. Se a documentação exigir a relação hand-eye, aplicá-la num passo explícito e registrar em `meta.json` (`gt_frame_fix`). Pares estéreo: `stamps.csv` só contém timestamps presentes nos dois lados (BotanicGarden é sincronizado em hardware; se o RELLIS tiver offsets, casar por vizinho mais próximo ≤ 5 ms — ajustar `extract` se `unpaired_*` > 1%).
 
-- [ ] **Step 5: Rodar testes** — `.venv/bin/pytest tests/test_extract.py -q` → `1 passed`.
+- [ ] **Step 5: Rodar testes** — `.venv/bin/pytest tests/test_extract.py -q` → `2 passed`.
 
 - [ ] **Step 6: Extrair trecho real** (depois do download do 1018-00, Google/OneDrive):
 
@@ -1748,7 +1974,7 @@ Nota sobre o GT do BotanicGarden: o arquivo GT-pose (TUM) rastreia o frame do VL
 .venv/bin/python -m ofd.extract --bag data/raw/botanic/1018-00.bag --config configs/botanic/dataset.yaml \
   --out data/extracted/1018-00_smoke --start 0 --duration 120 --gt-tum data/raw/botanic/1018-00_gt.tum
 ```
-Expected: `n_scans ≈ 1200`, `n_stereo ≈ 1200`, `deskew` true/false coerente com o Step 2, `unpaired_*` ≈ 0.
+Expected: `n_scans ≈ 1200`, `n_stereo ≈ 1200`, `deskew` true/false coerente com o Step 2, `unpaired_*` ≈ 0. Se `deskew` sair false, inspecionar `scans.csv` (quais scans falharam e por quê: span ou monotonicidade) antes de seguir.
 
 - [ ] **Step 7: Commit**
 
@@ -1763,20 +1989,21 @@ git commit -m "feat(extract): extração de bag ROS1 preservando campos da nuvem
 
 **Files:**
 - Create: `ofd/run_kissicp.py`, `ofd/lidar_indicators.py`
-- Test: `tests/test_run_kissicp.py`
+- Test: `tests/test_run_kissicp.py`, `tests/test_lidar_indicators.py`
 
 **Interfaces:**
-- Consumes: `tracks.write_run`, `indicators.registration_quality`, extração (Task 10)
+- Consumes: `tracks.write_run|load_run`, `indicators.registration_quality`, saída do `extract` (Task 10: `lidar_stamps.csv` com `ts_ns,end_ns`; `clouds/<ts_ns>.npz`; `meta.json["deskew"]`)
 - Produces:
-  - `run_kissicp.run(seq_dir: Path, out_dir: Path, deskew: bool) -> None` (formato comum; sensor_frame = lidar)
-  - `lidar_indicators.compute(seq_dir: Path, run_dir: Path, T_L_S: ndarray) -> DataFrame` e escreve/mescla `indicators.csv` com `fitness,inlier_rmse,unmatched_ratio,n_points` por `ts_ns` (usa ΔT entre poses **consecutivas do próprio método** no mesmo segmento, convertido ao frame do LiDAR).
+  - `run_kissicp.run(seq_dir: Path, out_dir: Path, deskew: bool) -> None` — formato comum; **timestamp da pose = `end_ns`** do scan; `state.csv` com uma linha por scan; se `deskew=True` e algum scan não tiver `t_norm` → `RuntimeError` (o `extract` garante 100% antes de ligar o deskew).
+  - `lidar_indicators.compute(seq_dir: Path, run_dir: Path, T_L_S: ndarray) -> DataFrame` — para cada par de poses consecutivas do método no mesmo segmento cujos timestamps são `end_ns` de scans extraídos, registra scan k → k−1 com o ΔT do método (frame do LiDAR) e mescla `fitness,inlier_rmse,unmatched_ratio,n_points` em `indicators.csv` (chave `ts_ns` = `end_ns`).
   - CLIs: `python -m ofd.run_kissicp --seq-dir … --out …`; `python -m ofd.lidar_indicators --seq-dir … --run-dir … --config … --method fastlio|kissicp`
 
-- [ ] **Step 1: Teste** — `tests/test_run_kissicp.py`: cena sintética (função `scene()` do teste de indicadores, copiada aqui) deslocada +0.5 m/scan em x, 40 scans em `clouds/*.npz` + `lidar_stamps.csv`; roda `run()`; espera `poses_causal.tum` com 40 linhas, deslocamento final ≈ 19.5 m (±0.5), `state.csv` todo ok.
+- [ ] **Step 1: Teste do runner** — `tests/test_run_kissicp.py`
 
 ```python
 import numpy as np
 import pandas as pd
+import pytest
 from ofd import run_kissicp, tracks
 
 
@@ -1788,17 +2015,34 @@ def scene(seed=0):
     return np.vstack([ground, walls, poles]).astype(np.float32)
 
 
-def test_kissicp_tracks_translation(tmp_path):
+def make_seq(tmp_path, n=40, with_t=False):
     seq = tmp_path / "seq"; (seq / "clouds").mkdir(parents=True)
     W = scene()
-    ts = (1_700_000_000 * 10**9 + np.arange(40) * 100_000_000).astype(np.int64)
+    ts = (1_700_000_000 * 10**9 + np.arange(n) * 100_000_000).astype(np.int64)
     for k, t in enumerate(ts):
-        np.savez_compressed(seq / "clouds" / f"{t}.npz", xyz=W - np.array([0.5 * k, 0, 0], np.float32))
-    pd.DataFrame({"ts_ns": ts}).to_csv(seq / "lidar_stamps.csv", index=False)
+        rec = {"xyz": W - np.array([0.5 * k, 0, 0], np.float32)}
+        if with_t:
+            rec["t_norm"] = np.zeros(len(W), np.float32)
+        np.savez_compressed(seq / "clouds" / f"{t}.npz", **rec)
+    pd.DataFrame({"ts_ns": ts, "end_ns": ts + 99_000_000}).to_csv(seq / "lidar_stamps.csv", index=False)
+    return seq, ts
+
+
+def test_kissicp_tracks_translation_and_uses_end_ns(tmp_path):
+    seq, ts = make_seq(tmp_path)
     run_kissicp.run(seq, tmp_path / "run", deskew=False)
     tr, _, meta = tracks.load_run(tmp_path / "run")
     assert len(tr.ts_ns) == 40 and abs(tr.Ts[-1][0, 3] - 19.5) < 0.5
+    assert tr.ts_ns[0] == ts[0] + 99_000_000
     assert meta["uses_imu"] is False and meta["deskew"] is False
+    st = pd.read_csv(tmp_path / "run" / "state.csv")
+    assert len(st) == 40 and st["ok"].all()
+
+
+def test_deskew_without_times_raises(tmp_path):
+    seq, _ = make_seq(tmp_path, n=3, with_t=False)
+    with pytest.raises(RuntimeError):
+        run_kissicp.run(seq, tmp_path / "run", deskew=True)
 ```
 
 - [ ] **Step 2: Implementar `ofd/run_kissicp.py`**
@@ -1819,21 +2063,28 @@ from ofd import tracks
 
 def run(seq_dir, out_dir, deskew):
     seq_dir = Path(seq_dir)
-    cfg = load_config(None, max_range=100.0)
-    cfg.data.deskew = bool(deskew)
+    cfg = load_config(None, deskew=bool(deskew), max_range=100.0)
     odom = KissICP(config=cfg)
-    stamps = pd.read_csv(seq_dir / "lidar_stamps.csv")["ts_ns"].to_numpy(np.int64)
-    Ts = []
-    for t in stamps:
+    stamps = pd.read_csv(seq_dir / "lidar_stamps.csv")
+    Ts, ok = [], []
+    for t in stamps["ts_ns"].to_numpy(np.int64):
         z = np.load(seq_dir / "clouds" / f"{t}.npz")
         pts = z["xyz"].astype(np.float64)
-        times = z["t_norm"].astype(np.float64) if (deskew and "t_norm" in z.files) else np.zeros(len(pts))
+        if deskew:
+            if "t_norm" not in z.files:
+                raise RuntimeError(f"deskew=True mas scan {t} sem t_norm")
+            times = z["t_norm"].astype(np.float64)
+        else:
+            times = np.zeros(len(pts))
         odom.register_frame(pts, times)
         Ts.append(odom.last_pose.copy())
-    state = pd.DataFrame({"ts_ns": stamps, "ok": 1, "map_id": 0})
+        ok.append(1)
+    end = stamps["end_ns"].to_numpy(np.int64)
+    state = pd.DataFrame({"ts_ns": end, "ok": ok, "map_id": 0})
     meta = {"method": "kissicp", "uses_imu": False, "sensor_frame": "lidar", "deskew": bool(deskew),
+            "kiss_icp_version": __import__("kiss_icp").__version__,
             "config": json.loads(cfg.model_dump_json()) if hasattr(cfg, "model_dump_json") else str(cfg)}
-    tracks.write_run(out_dir, stamps, np.stack(Ts), state, pd.DataFrame({"ts_ns": stamps}), meta)
+    tracks.write_run(out_dir, end, np.stack(Ts), state, pd.DataFrame({"ts_ns": end}), meta)
 
 
 def main():
@@ -1849,9 +2100,31 @@ if __name__ == "__main__":
     main()
 ```
 
-> Se a versão instalada do KISS-ICP tiver assinatura diferente (`load_config`, `register_frame(frame, timestamps)`), conferir com `.venv/bin/python -c "import kiss_icp, inspect; from kiss_icp.kiss_icp import KissICP; print(kiss_icp.__version__, inspect.signature(KissICP.register_frame))"` e ajustar estas duas chamadas.
+> Conferir a API da versão travada antes de rodar: `.venv/bin/python -c "import kiss_icp, inspect; from kiss_icp.config import load_config; from kiss_icp.kiss_icp import KissICP; print(kiss_icp.__version__, inspect.signature(load_config), inspect.signature(KissICP.register_frame))"`. Se `load_config` não aceitar `deskew`, usar `cfg.data.deskew = bool(deskew)` após `load_config(None, max_range=100.0)`.
 
-- [ ] **Step 3: Implementar `ofd/lidar_indicators.py`**
+- [ ] **Step 3: Teste dos indicadores** — `tests/test_lidar_indicators.py`
+
+```python
+import numpy as np
+import pandas as pd
+from ofd import lidar_indicators, tracks
+from tests.test_run_kissicp import make_seq
+
+
+def test_indicators_keyed_by_end_ns(tmp_path):
+    seq, ts = make_seq(tmp_path, n=5)
+    end = ts + 99_000_000
+    Ts = np.stack([np.eye(4)] * 5)
+    for k in range(5):
+        Ts[k][0, 3] = 0.5 * k  # pose correta do sensor
+    tracks.write_run(tmp_path / "run", end, Ts, pd.DataFrame({"ts_ns": end, "ok": 1, "map_id": 0}),
+                     pd.DataFrame({"ts_ns": end}), {"method": "kissicp"})
+    out = lidar_indicators.compute(seq, tmp_path / "run", np.eye(4))
+    assert out["fitness"].notna().sum() == 4 and out["fitness"].dropna().min() > 0.9
+    assert set(out["ts_ns"]) == set(end)
+```
+
+- [ ] **Step 4: Implementar `ofd/lidar_indicators.py`**
 
 ```python
 """Uniform LiDAR indicators from a method's own consecutive ΔT (causal: uses scans k-1, k only)."""
@@ -1867,19 +2140,20 @@ from ofd import config, indicators, se3, tracks
 def compute(seq_dir, run_dir, T_L_S):
     seq_dir, run_dir = Path(seq_dir), Path(run_dir)
     tr, ind, _ = tracks.load_run(run_dir)
-    scans = set(pd.read_csv(seq_dir / "lidar_stamps.csv")["ts_ns"].tolist())
+    st = pd.read_csv(seq_dir / "lidar_stamps.csv")
+    cloud_of = dict(zip(st["end_ns"].astype(np.int64), st["ts_ns"].astype(np.int64)))  # end_ns -> arquivo
     rows = []
     for k in range(1, len(tr.ts_ns)):
         a, b = int(tr.ts_ns[k - 1]), int(tr.ts_ns[k])
-        if tr.segment[k] != tr.segment[k - 1] or a not in scans or b not in scans:
+        if tr.segment[k] != tr.segment[k - 1] or a not in cloud_of or b not in cloud_of:
             continue
         dT = se3.conjugate(se3.delta(tr.Ts[k - 1], tr.Ts[k]), T_L_S)
-        src = np.load(seq_dir / "clouds" / f"{b}.npz")["xyz"]
-        tgt = np.load(seq_dir / "clouds" / f"{a}.npz")["xyz"]
+        src = np.load(seq_dir / "clouds" / f"{cloud_of[b]}.npz")["xyz"]
+        tgt = np.load(seq_dir / "clouds" / f"{cloud_of[a]}.npz")["xyz"]
         rows.append({"ts_ns": b, **indicators.registration_quality(src, tgt, dT)})
     new = pd.DataFrame(rows, columns=["ts_ns", "fitness", "inlier_rmse", "unmatched_ratio", "n_points"])
-    keep = ind.drop(columns=[c for c in new.columns if c in ind.columns and c != "ts_ns"], errors="ignore")
-    merged = keep.reset_index().merge(new, on="ts_ns", how="outer").sort_values("ts_ns")
+    base = ind.drop(columns=[c for c in new.columns if c in ind.columns], errors="ignore").reset_index()
+    merged = base.merge(new, on="ts_ns", how="outer").sort_values("ts_ns")
     merged.to_csv(run_dir / "indicators.csv", index=False)
     return merged
 
@@ -1898,11 +2172,9 @@ if __name__ == "__main__":
     main()
 ```
 
-Nota: FAST-LIO publica `/Odometry` com header stamp do scan; `lidar_indicators` só calcula quando o `ts_ns` da pose coincide com um scan extraído — conferido no Task 12 Step 5.
+- [ ] **Step 5: Rodar** — `.venv/bin/pytest tests/test_run_kissicp.py tests/test_lidar_indicators.py -q` → `3 passed`.
 
-- [ ] **Step 4: Rodar** — `.venv/bin/pytest tests/test_run_kissicp.py -q` → `1 passed`.
-
-- [ ] **Step 5: Rodar no smoke real**
+- [ ] **Step 6: Rodar no smoke real**
 
 ```bash
 .venv/bin/python -m ofd.run_kissicp --seq-dir data/extracted/1018-00_smoke --out data/runs/1018-00_smoke/kissicp
@@ -1910,11 +2182,11 @@ Nota: FAST-LIO publica `/Odometry` com header stamp do scan; `lidar_indicators` 
 ```
 Expected: ~1200 poses; `fitness` mediano > 0.5.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add ofd/run_kissicp.py ofd/lidar_indicators.py tests/test_run_kissicp.py
-git commit -m "feat(kissicp): runner offline e indicadores LiDAR uniformes"
+git add ofd/run_kissicp.py ofd/lidar_indicators.py tests/test_run_kissicp.py tests/test_lidar_indicators.py
+git commit -m "feat(kissicp): runner offline com tempo de disponibilidade e indicadores LiDAR uniformes"
 ```
 
 ---
@@ -1923,13 +2195,15 @@ git commit -m "feat(kissicp): runner offline e indicadores LiDAR uniformes"
 
 **Files:**
 - Create: `scripts/build_fastlio.sh`, `tools/fastlio_recorder.py`, `ofd/run_fastlio.py`, `configs/botanic/fastlio.yaml`, `configs/rellis/fastlio.yaml`
-- Test: `tests/test_fastlio_recorder_parse.py` (conversão Odometry→linhas), execução real no smoke
+- Test: `tests/test_fastlio_recorder_parse.py`, `tests/test_run_fastlio.py`
 
 **Interfaces:**
-- Consumes: bag ROS1 original, `tracks.write_run`
-- Produces: `data/runs/<seq>/fastlio/` no formato comum (sensor_frame = `imu` — o `body` do FAST-LIO é o frame da IMU; `T_L_S["fastlio"]` = IMU→LiDAR).
+- Consumes: bag ROS1 original, `lidar_stamps.csv` da extração (Task 10), `matching.match_monotonic` (Task 9), `tracks.write_run`
+- Produces:
+  - `run_fastlio.assemble(raw_ts: ndarray[int64], raw_Ts, end_ns: ndarray[int64], tol_ms=5.0, min_match=0.9) -> (pose_ts, pose_Ts, state_df, info)` — casa cada scan (`end_ns`) com no máximo uma pose publicada (monotônico, 1:1, ≤ tol); **uma linha de estado por scan** (`ok=0` se o scan não gerou pose); timestamp da pose = `end_ns` do scan casado. Se a fração casada < `min_match`, levanta `RuntimeError` informando a mediana de (pose − scan mais próximo) para diagnosticar offset.
+  - `run_fastlio.run(...)` → `data/runs/<seq>/fastlio/` (sensor_frame = `imu`: o `body` do FAST-LIO é o frame da IMU, publicado com `lidar_end_time`; `T_L_S["fastlio"]` = IMU→LiDAR).
 
-- [ ] **Step 1: `scripts/build_fastlio.sh`** — workspace próprio com symlinks para o FAST_LIO e livox_ros_driver2 já existentes:
+- [ ] **Step 1: `scripts/build_fastlio.sh`** — workspace próprio com symlinks para o FAST_LIO e livox_ros_driver2 já existentes (sem alterar o projeto original):
 
 ```bash
 #!/usr/bin/env bash
@@ -1941,9 +2215,10 @@ ln -sfn "$SRC/FAST_LIO" ros2_ws/src/FAST_LIO
 ln -sfn "$SRC/livox_ros_driver2" ros2_ws/src/livox_ros_driver2
 source /opt/ros/jazzy/setup.bash
 cd ros2_ws && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-up-to fast_lio
+git -C "$SRC/FAST_LIO" rev-parse HEAD > ../third_party_fastlio_commit.txt
 ```
-Adicionar `ros2_ws/build ros2_ws/install ros2_ws/log` ao `.gitignore`.
-Run: `bash scripts/build_fastlio.sh` → Expected: `Summary: N packages finished`. (Se `livox_ros_driver2` exigir `ROS_EDITION`, rodar com `--cmake-args -DROS_EDITION=ROS2 -DHUMBLE_ROS=jazzy`, como em `Controle_robo_livox/setup_livox.sh`.)
+Adicionar `ros2_ws/build ros2_ws/install ros2_ws/log ros2_ws/src` ao `.gitignore` e commitar `third_party_fastlio_commit.txt`.
+Run: `bash scripts/build_fastlio.sh` → Expected: `Summary: N packages finished`. (Se `livox_ros_driver2` exigir `ROS_EDITION`, usar os mesmos argumentos de `Controle_robo_livox/setup_livox.sh`.)
 
 - [ ] **Step 2: Configs FAST-LIO** — `configs/botanic/fastlio.yaml`: copiar `velodyne.yaml` do FAST_LIO e alterar: `lid_topic: /velodyne_points`, `imu_topic: /imu/data`, `scan_line: 16`, `timestamp_unit` conforme Task 10 Step 2 (0=s,1=ms,2=us,3=ns), `extrinsic_T/extrinsic_R` = LiDAR no frame da IMU (Xsens) da calibração do BotanicGarden, `pcd_save_en: false`, `path_en: false`. `configs/rellis/fastlio.yaml`: copiar `ouster64.yaml`, `lid_topic: /os1_cloud_node/points`, `imu_topic: /os1_cloud_node/imu`, extrínseca IMU interna do Ouster.
 
@@ -1951,7 +2226,7 @@ Run: `bash scripts/build_fastlio.sh` → Expected: `Summary: N packages finished
 
 ```python
 #!/usr/bin/env python3
-"""Record /Odometry from FAST-LIO into TUM (ts from header = scan time) until idle timeout."""
+"""Record /Odometry from FAST-LIO into TUM (ts from header = lidar_end_time) until idle timeout."""
 import sys
 import time
 
@@ -1982,16 +2257,18 @@ class Rec(Node):
 def main():
     path, idle = sys.argv[1], float(sys.argv[2]) if len(sys.argv) > 2 else 20.0
     rclpy.init(); n = Rec(path)
-    while rclpy.ok() and time.time() - n.last < idle:
-        rclpy.spin_once(n, timeout_sec=0.5)
-    n.f.close(); rclpy.shutdown()
+    try:
+        while rclpy.ok() and time.time() - n.last < idle:
+            rclpy.spin_once(n, timeout_sec=0.5)
+    finally:
+        n.f.close(); rclpy.shutdown()
 
 
 if __name__ == "__main__":
     main()
 ```
 
-Teste `tests/test_fastlio_recorder_parse.py` (roda no venv sem ROS: importa só `odom_to_line` via `importlib` com stubs mínimos):
+Teste `tests/test_fastlio_recorder_parse.py` (roda no venv sem ROS, com stubs):
 
 ```python
 import importlib.util, sys, types
@@ -2011,10 +2288,42 @@ def test_odom_to_line():
     assert m.odom_to_line(msg).startswith("5.000000007 1.000000000 2.000000000 3.000000000")
 ```
 
-- [ ] **Step 4: Orquestrador** — `ofd/run_fastlio.py`
+- [ ] **Step 4: Teste do `assemble`** — `tests/test_run_fastlio.py`
 
 ```python
-"""Convert ROS1 bag -> ROS2, run FAST-LIO, play bag slowly, record /Odometry -> common run format."""
+import numpy as np
+import pytest
+from ofd import run_fastlio
+
+MS = 1_000_000
+
+
+def poses(n):
+    Ts = np.stack([np.eye(4)] * n)
+    for i in range(n):
+        Ts[i][0, 3] = i
+    return Ts
+
+
+def test_every_scan_has_state_and_missing_scan_is_not_ok():
+    end = np.arange(10) * 100 * MS
+    raw_ts = np.delete(end, 4) + 2 * MS          # scan 4 não gerou pose; demais com 2 ms de diferença
+    ts, Ts, st, info = run_fastlio.assemble(raw_ts, poses(9), end)
+    assert len(st) == 10 and st["ok"].tolist() == [1, 1, 1, 1, 0, 1, 1, 1, 1, 1]
+    assert ts.tolist() == np.delete(end, 4).tolist()   # pose carimbada com end_ns do scan
+    assert info["matched_frac"] == 0.9
+
+
+def test_offset_mismatch_raises_with_diagnostic():
+    end = np.arange(10) * 100 * MS
+    with pytest.raises(RuntimeError, match="mediana"):
+        run_fastlio.assemble(end + 50 * MS, poses(10), end)
+```
+
+- [ ] **Step 5: Orquestrador** — `ofd/run_fastlio.py`
+
+```python
+"""Convert ROS1 bag -> ROS2, run FAST-LIO, play bag, record /Odometry -> common run format."""
 import argparse
 import json
 import subprocess
@@ -2025,32 +2334,58 @@ import numpy as np
 import pandas as pd
 
 from ofd import se3, tracks
+from ofd.matching import match_monotonic
 
 ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
 
 
-def sh(cmd, **kw):
-    return subprocess.Popen(["bash", "-c", cmd], **kw)
+def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9):
+    order = np.argsort(raw_ts, kind="stable")
+    raw_ts, raw_Ts = np.asarray(raw_ts, np.int64)[order], raw_Ts[order]
+    end_ns = np.sort(np.asarray(end_ns, np.int64))
+    m = match_monotonic(end_ns, raw_ts, int(tol_ms * 1e6))
+    frac = float((m >= 0).mean()) if len(m) else 0.0
+    if frac < min_match:
+        near = [int(raw_ts[np.argmin(np.abs(raw_ts - e))] - e) for e in end_ns] if len(raw_ts) else [0]
+        raise RuntimeError(f"só {frac:.1%} dos scans casaram com poses; mediana(pose - scan) = "
+                           f"{np.median(near) / 1e6:.1f} ms — conferir timestamp_unit/end_ns")
+    ok = (m >= 0).astype(int)
+    state = pd.DataFrame({"ts_ns": end_ns, "ok": ok, "map_id": 0})
+    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "tol_ms": tol_ms}
 
 
-def run(bag1, ros2_bag_dir, cfg_yaml, out_dir, topics, rate=0.5, start=None, duration=None):
+def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=None, duration=None):
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     if not Path(ros2_bag_dir).exists():
         inc = " ".join(f"--include-topic {t}" for t in topics)
         subprocess.run(["bash", "-c", f".venv/bin/rosbags-convert --src {bag1} --dst {ros2_bag_dir} {inc}"], check=True)
     cfg_yaml = Path(cfg_yaml).resolve()
-    log = open(out_dir / "log.txt", "w")
-    node = sh(ROS + f"ros2 launch fast_lio mapping.launch.py rviz:=false "
-                    f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}", stdout=log, stderr=log)
-    rec = sh(ROS + f"/usr/bin/python3 tools/fastlio_recorder.py {out_dir/'raw_odom.tum'} 30", stdout=log, stderr=log)
-    time.sleep(5)
     extra = (f" --start-offset {start}" if start else "") + (f" --playback-duration {duration}" if duration else "")
-    subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}{extra}"], check=True, stdout=log, stderr=log)
-    rec.wait(); node.terminate(); node.wait(timeout=30)
-    ts, Ts = se3.load_tum(out_dir / "raw_odom.tum")
-    state = pd.DataFrame({"ts_ns": ts, "ok": 1, "map_id": 0})
+    with open(out_dir / "log.txt", "w") as log:
+        node = subprocess.Popen(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
+                                 f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}"], stdout=log, stderr=log)
+        rec = subprocess.Popen(["bash", "-c", ROS + f"exec /usr/bin/python3 tools/fastlio_recorder.py "
+                                f"{out_dir / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
+        try:
+            time.sleep(5)
+            subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}{extra}"],
+                           check=True, stdout=log, stderr=log)
+            rec.wait(timeout=600)
+        finally:
+            for p in (rec, node):
+                if p.poll() is None:
+                    p.terminate()
+                    try:
+                        p.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+    raw_ts, raw_Ts = se3.load_tum(out_dir / "raw_odom.tum")
+    end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
+    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns)
+    commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
     meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True,
-            "config": cfg_yaml.read_text(), "rate": rate}
+            "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
+            "start": start, "duration": duration, **info}
     tracks.write_run(out_dir, ts, Ts, state, pd.DataFrame({"ts_ns": ts}), meta)
 
 
@@ -2059,36 +2394,39 @@ def main():
     ap.add_argument("--bag", required=True)
     ap.add_argument("--ros2-bag", required=True)
     ap.add_argument("--fastlio-config", required=True)
+    ap.add_argument("--seq-dir", required=True, help="extração correspondente (para lidar_stamps.csv)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--topics", nargs="+", required=True)
     ap.add_argument("--rate", type=float, default=0.5)
     ap.add_argument("--start", type=float)
     ap.add_argument("--duration", type=float)
     a = ap.parse_args()
-    run(a.bag, a.ros2_bag, a.fastlio_config, a.out, a.topics, a.rate, a.start, a.duration)
+    run(a.bag, a.ros2_bag, a.fastlio_config, a.seq_dir, a.out, a.topics, a.rate, a.start, a.duration)
 
 
 if __name__ == "__main__":
     main()
 ```
 
-> `rosbags-convert` em versões ≥0.10 usa `rosbags-convert --src X --dst Y`; conferir com `.venv/bin/rosbags-convert --help`. `--playback-duration`/`--start-offset` existem no `ros2 bag play` do Jazzy (conferir `ros2 bag play --help`).
+> Conferir `rosbags-convert --help` (versão travada) e `ros2 bag play --help` (Jazzy: `--start-offset`, `--playback-duration`) antes do smoke. O `start`/`duration` do play deve ser o mesmo da extração; scans da extração fora da janela tocada aparecem como `ok=0` e o `assemble` falha se forem > 10% — usar exatamente a mesma janela.
 
-- [ ] **Step 5: Rodar no smoke** (mesmo trecho de 120 s do Task 10):
+- [ ] **Step 6: Rodar testes** — `.venv/bin/pytest tests/test_fastlio_recorder_parse.py tests/test_run_fastlio.py -q` → `3 passed`.
+
+- [ ] **Step 7: Rodar no smoke** (mesmo trecho de 120 s do Task 10):
 
 ```bash
 .venv/bin/python -m ofd.run_fastlio --bag data/raw/botanic/1018-00.bag --ros2-bag data/raw/botanic/1018-00_ros2 \
-  --fastlio-config configs/botanic/fastlio.yaml --out data/runs/1018-00_smoke/fastlio \
-  --topics /velodyne_points /imu/data --start 0 --duration 120
+  --fastlio-config configs/botanic/fastlio.yaml --seq-dir data/extracted/1018-00_smoke \
+  --out data/runs/1018-00_smoke/fastlio --topics /velodyne_points /imu/data --start 0 --duration 120
 .venv/bin/python -m ofd.lidar_indicators --seq-dir data/extracted/1018-00_smoke --run-dir data/runs/1018-00_smoke/fastlio --config configs/botanic/dataset.yaml --method fastlio
 ```
-Expected: ~1200 linhas em `poses_causal.tum`, timestamps coincidindo com `lidar_stamps.csv` (checar `comm`); `indicators.csv` com fitness. Se os timestamps não coincidirem (FAST-LIO usa fim do scan), registrar em `run.json` e casar por vizinho ≤ 5 ms em `lidar_indicators`.
+Expected: `matched_frac` ≥ 0.9 em `run.json`; `indicators.csv` com fitness.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/build_fastlio.sh tools/fastlio_recorder.py ofd/run_fastlio.py configs/*/fastlio.yaml tests/test_fastlio_recorder_parse.py .gitignore
-git commit -m "feat(fastlio): build ROS 2, gravador de /Odometry e orquestração do bag"
+git add scripts/build_fastlio.sh third_party_fastlio_commit.txt tools/fastlio_recorder.py ofd/run_fastlio.py configs/*/fastlio.yaml tests/test_fastlio_recorder_parse.py tests/test_run_fastlio.py .gitignore
+git commit -m "feat(fastlio): build ROS 2, gravador, casamento pose↔scan 1:1 e estado por scan"
 ```
 
 ---
@@ -2119,15 +2457,15 @@ sudo apt install -y build-essential cmake git libeigen3-dev libopencv-dev libgle
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p third_party && cd third_party
-[ -d Pangolin ] || git clone --depth 1 -b v0.9.1 https://github.com/stevenlovegrove/Pangolin.git
+[ -d Pangolin ] || (git clone https://github.com/stevenlovegrove/Pangolin.git && git -C Pangolin checkout 7364b59a58045d1c429b146e44f6f088fd1cc518)
 cmake -S Pangolin -B Pangolin/build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF \
   -DCMAKE_INSTALL_PREFIX=$PWD/local && cmake --build Pangolin/build -j8 --target install
 [ -d ORB_SLAM3 ] || git clone https://github.com/UZ-SLAMLab/ORB_SLAM3.git
 cd ORB_SLAM3
-git checkout 4452a3c  # v1.0 (dez/2021) — registrar no run.json
-git apply ../../patches/orbslam3/0001-causal-log-and-no-loop.patch || git apply --check -R ../../patches/orbslam3/0001-causal-log-and-no-loop.patch
-sed -i 's/-std=c++11/-std=c++17/; s/CXX_STANDARD 11/CXX_STANDARD 17/; s/COMPILER_SUPPORTS_CXX11/TRUE/' CMakeLists.txt
-sed -i 's/find_package(OpenCV 4.4)/find_package(OpenCV 4)/' CMakeLists.txt
+git checkout 4452a3c4ab75   # HEAD de master (pós v1.0-release) — fixo
+for p in ../../patches/orbslam3/*.patch; do
+  git apply --check "$p" 2>/dev/null && git apply "$p" || git apply --check -R "$p"   # idempotente
+done
 (cd Thirdparty/DBoW2 && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8)
 (cd Thirdparty/g2o && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8)
 (cd Thirdparty/Sophus && cmake -B build -DBUILD_TESTS=OFF && cmake --build build -j8)
@@ -2138,7 +2476,18 @@ cd ../.. && cmake -S tools/vo_runners -B tools/vo_runners/build -DCMAKE_BUILD_TY
   && cmake --build tools/vo_runners/build -j8 --target orbslam3_stereo_log
 mkdir -p third_party/bin && cp tools/vo_runners/build/orbslam3_stereo_log third_party/bin/
 ```
-Se o commit `4452a3c` não existir, usar `git checkout v1.0-release`. Erros comuns de compilação em 24.04 e correções: `std::chrono::monotonic_clock` → `steady_clock` (`sed -i 's/monotonic_clock/steady_clock/g' Examples/*/*.cc` — os exemplos não são compilados, mas a lib não usa); `#include <unistd.h>` faltando em `LoopClosing.h`/`System.h`; Eigen alignment warnings ignoráveis. Registrar cada correção como patch adicional em `patches/orbslam3/`.
+**Nenhum `sed` no script**: toda alteração no código do ORB-SLAM3 vive em `patches/orbslam3/` e é aplicada pelo loop acima. O patch de build é criado assim (uma vez, dentro de `third_party/ORB_SLAM3` limpo no commit fixo):
+
+```bash
+cd third_party/ORB_SLAM3
+sed -i 's/-std=c++11/-std=c++17/; s/CXX_STANDARD 11/CXX_STANDARD 17/; s/COMPILER_SUPPORTS_CXX11/TRUE/' CMakeLists.txt
+sed -i 's/find_package(OpenCV 4.4)/find_package(OpenCV 4)/' CMakeLists.txt
+# compilar; para cada erro de 24.04 corrigir à mão (típicos: monotonic_clock -> steady_clock,
+# #include <unistd.h> faltando em LoopClosing.h/System.h, std::numeric_limits sem <limits>)
+git diff -- CMakeLists.txt src include Thirdparty > ../../patches/orbslam3/0000-build-ubuntu2404.patch
+git checkout -- .   # volta ao commit limpo; o script reaplica os patches
+```
+(`0000-` aplica antes de `0001-`, que é o patch de log da etapa seguinte; os dois são gerados como diffs separados.)
 
 - [ ] **Step 3: Patch** — criar `patches/orbslam3/0001-causal-log-and-no-loop.patch` com as mudanças abaixo (gerar via `git diff > ...` após editar à mão dentro de `third_party/ORB_SLAM3`):
 
@@ -2183,9 +2532,12 @@ public:
 #include <System.h>
 #include <Tracking.h>
 #include <opencv2/opencv.hpp>
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <thread>
 
 int main(int argc, char** argv) {
     if (argc != 5) { std::cerr << "usage: vocab settings seq_dir out_dir\n"; return 1; }
@@ -2195,11 +2547,16 @@ int main(int argc, char** argv) {
     std::vector<long long> ts;
     while (std::getline(st, line)) if (!line.empty()) ts.push_back(std::stoll(line));
     ORB_SLAM3::System slam(argv[1], argv[2], ORB_SLAM3::System::STEREO, false);
+    const double rate = std::getenv("VO_RATE") ? std::atof(std::getenv("VO_RATE")) : 1.0;  // tempo real
+    const auto wall0 = std::chrono::steady_clock::now();
+    const long long t0 = ts.empty() ? 0 : ts.front();
     std::ofstream f(out + "/frames.csv");
     f << "ts_ns,ok,map_id,inliers,n_features,reproj_err,tracked_ratio,x,y,z,qx,qy,qz,qw\n" << std::setprecision(9) << std::fixed;
     for (long long t : ts) {
         cv::Mat L = cv::imread(seq + "/images/left/" + std::to_string(t) + ".png", cv::IMREAD_GRAYSCALE);
         cv::Mat R = cv::imread(seq + "/images/right/" + std::to_string(t) + ".png", cv::IMREAD_GRAYSCALE);
+        if (rate > 0)  // espera o instante do frame: as threads de mapeamento acompanham como online
+            std::this_thread::sleep_until(wall0 + std::chrono::nanoseconds((long long)((t - t0) / rate)));
         Sophus::SE3f Tcw = slam.TrackStereo(L, R, t * 1e-9);
         auto* tr = slam.GetTracker();
         bool ok = slam.GetTrackingState() == ORB_SLAM3::Tracking::OK;
@@ -2269,6 +2626,7 @@ def test_convert_frames(tmp_path):
 ```python
 """Run VO binaries over extracted stereo and convert frames.csv -> common run format."""
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -2298,11 +2656,16 @@ def main():
     ap.add_argument("--seq-dir", required=True)
     ap.add_argument("--settings", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--rate", type=float, default=1.0, help="1.0 = tempo real; 0 = sem espera (só debug)")
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "VO_RATE": str(a.rate)}
     with open(out / "log.txt", "w") as log:
-        subprocess.run([BIN[a.method], VOCAB[a.method], a.settings, a.seq_dir, str(out)], check=True, stdout=log, stderr=log)
-    convert(out / "frames.csv", out, a.method, {"settings": Path(a.settings).read_text()})
+        subprocess.run([BIN[a.method], VOCAB[a.method], a.settings, a.seq_dir, str(out)],
+                       check=True, stdout=log, stderr=log, env=env)
+    commit = {"orbslam3": "4452a3c4ab75", "stella": "e445b5452535"}[a.method]
+    convert(out / "frames.csv", out, a.method,
+            {"settings": Path(a.settings).read_text(), "rate": a.rate, "commit": commit})
 
 
 if __name__ == "__main__":
@@ -2324,7 +2687,7 @@ Expected: `frames.csv` com ~1200 linhas, maioria `ok=1`, `reproj_err` ~0.5–2 p
 
 ```bash
 git add scripts/build_orbslam3.sh patches/orbslam3 tools/vo_runners configs/*/orbslam3.yaml ofd/run_vo.py tests/test_run_vo.py
-git commit -m "feat(orbslam3): build em 24.04, patch de log causal sem loop closure e runner estéreo"
+git commit -m "feat(orbslam3): build 24.04 via patches, log causal sem loop closure, runner estéreo em tempo real"
 ```
 
 ---
@@ -2346,20 +2709,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p third_party && cd third_party
 P=$PWD/local
-[ -d g2o ] || git clone https://github.com/RainerKuemmerle/g2o.git && (cd g2o && git checkout 20230223_git)
+[ -d g2o ] || (git clone https://github.com/RainerKuemmerle/g2o.git && git -C g2o checkout e8df2004e07ea8f5b8e6a8b9f2dc067b45b45036)
 cmake -S g2o -B g2o/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P -DBUILD_SHARED_LIBS=ON \
   -DG2O_BUILD_APPS=OFF -DG2O_BUILD_EXAMPLES=OFF -DG2O_USE_OPENGL=OFF && cmake --build g2o/build -j8 --target install
-[ -d FBoW ] || git clone https://github.com/stella-cv/FBoW.git
+[ -d FBoW ] || (git clone https://github.com/stella-cv/FBoW.git && git -C FBoW checkout c6e3c29e3332)
 cmake -S FBoW -B FBoW/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P && cmake --build FBoW/build -j8 --target install
-[ -d stella_vslam ] || git clone --recursive https://github.com/stella-cv/stella_vslam.git
+[ -d stella_vslam ] || (git clone https://github.com/stella-cv/stella_vslam.git && git -C stella_vslam checkout e445b5452535 \
+  && git -C stella_vslam submodule update --init --recursive)
+for p in ../patches/stella/*.patch; do [ -e "$p" ] || continue
+  git -C stella_vslam apply --check "$p" 2>/dev/null && git -C stella_vslam apply "$p" || git -C stella_vslam apply --check -R "$p"
+done
 cmake -S stella_vslam -B stella_vslam/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_PREFIX_PATH=$P
 cmake --build stella_vslam/build -j8 --target install
-[ -f orb_vocab.fbow ] || curl -sL https://github.com/stella-cv/FBoW_orb_vocab/raw/main/orb_vocab.fbow -o orb_vocab.fbow
+[ -f orb_vocab.fbow ] || curl -sfL https://github.com/stella-cv/FBoW_orb_vocab/raw/708407ae4cd5/orb_vocab.fbow -o orb_vocab.fbow
 cd .. && cmake -S tools/vo_runners -B tools/vo_runners/build -DSTELLA_PREFIX=$P/lib/cmake/stella_vslam \
   -DCMAKE_PREFIX_PATH=$P && cmake --build tools/vo_runners/build -j8 --target stella_stereo_log
 mkdir -p third_party/bin && cp tools/vo_runners/build/stella_stereo_log third_party/bin/
 ```
-Registrar o commit de `stella_vslam` em `run.json` (`git -C third_party/stella_vslam rev-parse HEAD`). Antes de investir tempo: `git -C third_party/stella_vslam log -1 --format=%cd` — se o repositório estiver parado há >2 anos ou o build falhar sem correção simples em ~2 h, **parar e reportar** (fallback a decidir com o usuário: OpenVINS sem IMU não serve; alternativa provável seria DSO estéreo/ORB-SLAM2).
+Commits fixos (Global Constraints); `run_vo` já grava o commit no `run.json`. Antes de investir tempo: `git -C third_party/stella_vslam log -1 --format=%cd` — se o repositório estiver parado há >2 anos ou o build falhar sem correção simples em ~2 h, **parar e reportar** (fallback a decidir com o usuário: OpenVINS sem IMU não serve; alternativa provável seria DSO estéreo/ORB-SLAM2).
 
 - [ ] **Step 2: Inspecionar a API para indicadores**
 
@@ -2378,12 +2745,18 @@ O runner usa: `system::feed_stereo_frame(img_l, img_r, ts_s)` → `std::shared_p
 #include <stella_vslam/tracking_module.h>
 #include <opencv2/opencv.hpp>
 #include <Eigen/Geometry>
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <thread>
 
 int main(int argc, char** argv) {
     if (argc != 5) { std::cerr << "usage: vocab config seq_dir out_dir\n"; return 1; }
     std::string seq = argv[3], out = argv[4];
+    const double rate = std::getenv("VO_RATE") ? std::atof(std::getenv("VO_RATE")) : 1.0;  // tempo real
+    const auto wall0 = std::chrono::steady_clock::now();
+    long long t0 = -1;
     auto cfg = std::make_shared<stella_vslam::config>(argv[2]);
     stella_vslam::system slam(cfg, argv[1]);
     slam.startup();
@@ -2397,6 +2770,9 @@ int main(int argc, char** argv) {
         long long t = std::stoll(line);
         cv::Mat L = cv::imread(seq + "/images/left/" + std::to_string(t) + ".png", cv::IMREAD_GRAYSCALE);
         cv::Mat R = cv::imread(seq + "/images/right/" + std::to_string(t) + ".png", cv::IMREAD_GRAYSCALE);
+        if (t0 < 0) t0 = t;
+        if (rate > 0)
+            std::this_thread::sleep_until(wall0 + std::chrono::nanoseconds((long long)((t - t0) / rate)));
         auto Tcw = slam.feed_stereo_frame(L, R, t * 1e-9);
         auto* tr = slam.tracker_;
         bool ok = Tcw && tr->tracking_state_ == stella_vslam::tracker_state_t::Tracking;
@@ -2479,22 +2855,140 @@ Expected: `frames.csv` ~1200 linhas, maioria `ok=1`, `reproj_err` finito.
 
 ```bash
 git add scripts/build_stella.sh tools/vo_runners/stella_stereo_log.cc configs/*/stella.yaml patches/stella
-git commit -m "feat(stella): build nativo, patch de indicadores e runner estéreo sem loop"
+git commit -m "feat(stella): build nativo com commits fixos, patch de indicadores, runner estéreo em tempo real sem loop"
 ```
 
 ---
 
-### Task 15: Pipeline ponta a ponta + sanidade
+### Task 15: Contrato, teste ponta a ponta sintético e pipeline real
 
 **Files:**
-- Create: `scripts/run_sequence.sh`, `docs/RESULTS_smoke.md`
-- Test: `tests/test_pipeline_contract.py`
+- Create: `ofd/contract.py`, `scripts/run_sequence.sh`, `docs/RESULTS_smoke.md`
+- Test: `tests/test_contract.py`, `tests/test_e2e_synthetic.py` (**nunca pulado**), `tests/test_pipeline_contract.py` (saída real; pulado se não existir)
 
 **Interfaces:**
 - Consumes: tudo acima.
-- Produces: `data/output/<seq>.parquet|csv`, `data/output/schema.json`, `data/output/metrics.csv`, `docs/RESULTS_smoke.md`.
+- Produces:
+  - `contract.check(df: DataFrame, schema: dict, max_age_ms=100.0) -> None` — levanta `AssertionError` com mensagem clara se: colunas ≠ schema (mesma ordem); vazamento (`schema.assert_no_leak`); `t` não estritamente crescente; para cada método e linha válida: `qw ≥ 0`, `0 ≤ age_ms ≤ max_age_ms`, `src_ts ≤ t`, `dt_ms > 0`, nenhuma feature NaN (exceto `*_var_H`).
+  - `data/output/<seq>.parquet|csv`, `data/output/schema.json`, `data/output/metrics.csv`, `docs/RESULTS_smoke.md`.
 
-- [ ] **Step 1: `scripts/run_sequence.sh`**
+- [ ] **Step 1: Teste do contrato** — `tests/test_contract.py`
+
+```python
+import numpy as np
+import pytest
+from ofd import contract, schema
+from tests.test_build_dataset import fake_seq
+from ofd import build_dataset
+
+
+def built(tmp_path):
+    seq, runs = fake_seq(tmp_path)
+    return build_dataset.build_sequence(seq, runs, {m: np.eye(4) for m in schema.METHODS}, "botanic", "survey")
+
+
+def test_contract_ok(tmp_path):
+    contract.check(built(tmp_path), schema.build_schema(schema.METHODS))
+
+
+def test_contract_catches_future_source(tmp_path):
+    df = built(tmp_path)
+    k = df.index[df["kissicp_valid"] == 1][0]
+    df.loc[k, "kissicp_src_ts"] = df.loc[k, "t"] + 1
+    with pytest.raises(AssertionError, match="causal"):
+        contract.check(df, schema.build_schema(schema.METHODS))
+
+
+def test_contract_catches_negative_qw(tmp_path):
+    df = built(tmp_path)
+    k = df.index[df["stella_valid"] == 1][0]
+    df.loc[k, "stella_qw"] = -0.5
+    with pytest.raises(AssertionError, match="qw"):
+        contract.check(df, schema.build_schema(schema.METHODS))
+```
+
+- [ ] **Step 2: Implementar `ofd/contract.py`**
+
+```python
+"""Output contract checks shared by the synthetic E2E test and the real-output test."""
+import numpy as np
+
+from ofd import schema as sch
+
+
+def check(df, schema, max_age_ms=100.0):
+    assert list(df.columns) == list(schema), "colunas diferentes do schema"
+    sch.assert_no_leak(schema)
+    t = df["t"].to_numpy(np.int64)
+    assert np.all(np.diff(t) > 0), "t não é estritamente crescente"
+    for m in sch.METHODS:
+        v = df[df[f"{m}_valid"] == 1]
+        assert (v[f"{m}_qw"] >= 0).all(), f"{m}: qw < 0"
+        assert v[f"{m}_age_ms"].between(0, max_age_ms).all(), f"{m}: age_ms fora de [0, {max_age_ms}]"
+        assert (v[f"{m}_src_ts"] <= v["t"]).all(), f"{m}: pose não causal (src_ts > t)"
+        assert (v[f"{m}_dt_ms"] > 0).all(), f"{m}: dt_ms <= 0"
+        feats = [c for c, r in schema.items() if r == "feature" and c.startswith(f"{m}_") and not c.endswith("_var_H")]
+        bad = [c for c in feats if v[c].isna().any()]
+        assert not bad, f"{m}: features NaN em linhas válidas: {bad}"
+```
+
+Run: `.venv/bin/pytest tests/test_contract.py -q` → `3 passed`.
+
+- [ ] **Step 3: Teste ponta a ponta sintético** — `tests/test_e2e_synthetic.py` (sem dados reais, sem skip): 4 métodos falsos com comportamentos distintos → `build_dataset` → `write_outputs` → `evaluate_sequence` → `contract.check`.
+
+```python
+import json
+import numpy as np
+import pandas as pd
+from ofd import build_dataset, contract, evaluate, schema, se3, tracks
+
+MS = 1_000_000
+
+
+def test_e2e(tmp_path):
+    seq, runs = tmp_path / "ext", tmp_path / "runs"
+    seq.mkdir()
+    n = 450                                                  # 45 s a 10 Hz, 1 m/s
+    end = (10**18 + np.arange(n) * 100 * MS).astype(np.int64)
+    pd.DataFrame({"ts_ns": end - 100 * MS, "end_ns": end}).to_csv(seq / "lidar_stamps.csv", index=False)
+    gt = np.stack([np.eye(4)] * n)
+    for i in range(n):
+        gt[i][0, 3] = 0.1 * i
+    se3.save_tum(seq / "gt.tum", end, gt)
+    rng = np.random.default_rng(0)
+    for m, kind in schema.METHODS.items():
+        ts = end - (30 * MS if kind == "vo" else 0)       # VO: câmera 30 ms antes do fim do scan
+        Ts = gt.copy()
+        ok = np.ones(n, int)
+        if m == "stella":
+            ok[200:220] = 0                                  # perde tracking 2 s
+        if m == "orbslam3":
+            Ts[:, 0, 3] *= 1.05                              # erro de escala 5%
+        if m == "kissicp":
+            Ts[:, 1, 3] += rng.normal(0, 0.01, n)            # ruído lateral
+        cols = schema.VO_IND if kind == "vo" else schema.LO_IND
+        ind = pd.DataFrame({"ts_ns": ts, **{c: rng.random(n) for c in cols}})
+        tracks.write_run(runs / m, ts[ok == 1], Ts[ok == 1], pd.DataFrame({"ts_ns": ts, "ok": ok, "map_id": 0}),
+                         ind, {"method": m, "uses_imu": m == "fastlio"})
+    T = {m: np.eye(4) for m in schema.METHODS}
+    df = build_dataset.build_sequence(seq, runs, T, "synthetic", "survey")
+    sch = schema.build_schema(schema.METHODS)
+    contract.check(df, sch)
+    build_dataset.write_outputs(df, sch, tmp_path / "out", "syn")
+    assert json.loads((tmp_path / "out/schema.json").read_text()) == sch
+    met = evaluate.evaluate_sequence(seq, runs, df, T).set_index("method")
+    assert met.loc["fastlio", "ate_rmse"] < 1e-6 and met.loc["fastlio", "coverage"] > 0.99
+    assert met.loc["stella", "n_failures"] == 1 and met.loc["stella", "n_resets"] == 1
+    assert met.loc["stella", "coverage"] < met.loc["fastlio", "coverage"]
+    assert met.loc["orbslam3", "ate_rmse"] > 0.1
+    assert (met["eligible_frac"] <= 1.0).all()
+    np.testing.assert_allclose(df.loc[df["fastlio_valid"] == 1, "fastlio_vx"], 1.0, atol=1e-6)
+    np.testing.assert_allclose(df["gt_vx"].dropna(), 1.0, atol=1e-6)
+```
+
+Run: `.venv/bin/pytest tests/test_e2e_synthetic.py -q` → `1 passed`. (Se falhar, o defeito está nas Tasks 3–8: corrigir lá, não aqui.)
+
+- [ ] **Step 4: `scripts/run_sequence.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -2504,72 +2998,71 @@ cd "$(dirname "$0")/.."
 DS=$1; SEQ=$2; BAG=$3; START=${4:-}; DUR=${5:-}; GT=${6:-}
 PY=.venv/bin/python; C=configs/$DS
 EXT=data/extracted/$SEQ; RUNS=data/runs/$SEQ
-ARGS=(); [ -n "$START" ] && ARGS+=(--start "$START" --duration "$DUR")
+WIN=(); [ -n "$START" ] && WIN+=(--start "$START" --duration "$DUR")
 GTA=(); [ -n "$GT" ] && GTA+=(--gt-tum "$GT")
-$PY -m ofd.extract --bag "$BAG" --config $C/dataset.yaml --out $EXT "${ARGS[@]}" "${GTA[@]}"
+$PY -m ofd.extract --bag "$BAG" --config $C/dataset.yaml --out $EXT "${WIN[@]}" "${GTA[@]}"
 $PY -m ofd.run_kissicp --seq-dir $EXT --out $RUNS/kissicp
 $PY -m ofd.lidar_indicators --seq-dir $EXT --run-dir $RUNS/kissicp --config $C/dataset.yaml --method kissicp
-TOP=$($PY -c "import yaml;d=yaml.safe_load(open('$C/dataset.yaml'))['topics'];print(d['lidar'],d['imu'])")
+read -r LID IMU < <($PY -c "import yaml;d=yaml.safe_load(open('$C/dataset.yaml'))['topics'];print(d['lidar'],d['imu'])")
 $PY -m ofd.run_fastlio --bag "$BAG" --ros2-bag "${BAG%.bag}_ros2" --fastlio-config $C/fastlio.yaml \
-  --out $RUNS/fastlio --topics $TOP ${START:+--start $START --duration $DUR}
+  --seq-dir $EXT --out $RUNS/fastlio --topics "$LID" "$IMU" "${WIN[@]}"
 $PY -m ofd.lidar_indicators --seq-dir $EXT --run-dir $RUNS/fastlio --config $C/dataset.yaml --method fastlio
-$PY -m ofd.run_vo --method orbslam3 --seq-dir $EXT --settings $C/orbslam3.yaml --out $RUNS/orbslam3
-$PY -m ofd.run_vo --method stella --seq-dir $EXT --settings $C/stella.yaml --out $RUNS/stella
+$PY -m ofd.run_vo --method orbslam3 --seq-dir $EXT --settings $C/orbslam3.yaml --out $RUNS/orbslam3 --rate 1.0
+$PY -m ofd.run_vo --method stella --seq-dir $EXT --settings $C/stella.yaml --out $RUNS/stella --rate 1.0
 $PY -m ofd.build_dataset --seq-dir $EXT --runs-dir $RUNS --config $C/dataset.yaml --out data/output
 $PY -m ofd.evaluate --seq-dir $EXT --runs-dir $RUNS --table data/output/$SEQ.parquet --config $C/dataset.yaml
 ```
 
-- [ ] **Step 2: Teste de contrato sobre a saída real** — `tests/test_pipeline_contract.py` (pulado se não houver saída):
+- [ ] **Step 5: Teste sobre a saída real** — `tests/test_pipeline_contract.py` (complementa o sintético; pode ser pulado quando não há saída):
 
 ```python
 import json
 from pathlib import Path
 import pandas as pd
 import pytest
-from ofd import schema
+from ofd import contract
 
 OUT = Path("data/output")
 
 
-@pytest.mark.skipif(not (OUT / "schema.json").exists(), reason="sem saída do pipeline")
-def test_outputs_respect_contract():
+@pytest.mark.skipif(not (OUT / "schema.json").exists(), reason="sem saída real do pipeline")
+def test_real_outputs_respect_contract():
     sch = json.loads((OUT / "schema.json").read_text())
-    schema.assert_no_leak(sch)
     for p in OUT.glob("*.parquet"):
-        df = pd.read_parquet(p)
-        assert list(df.columns) == list(sch)
-        for m in schema.METHODS:
-            v = df[df[f"{m}_valid"] == 1]
-            assert (v[f"{m}_qw"] >= 0).all()
-            assert (v[f"{m}_age_ms"].between(0, 100)).all()
-            assert (v[f"{m}_src_ts"] <= v["t"]).all()     # causalidade
-            assert (v[f"{m}_dt_ms"] > 0).all()
-        assert df["t"].is_monotonic_increasing
+        contract.check(pd.read_parquet(p), sch)
 ```
 
-- [ ] **Step 3: Smoke BotanicGarden** (trecho de 120 s do 1018-00):
+- [ ] **Step 6: Smoke BotanicGarden** (trecho de 120 s do 1018-00):
 
 ```bash
 bash scripts/run_sequence.sh botanic 1018-00_smoke data/raw/botanic/1018-00.bag 0 120 data/raw/botanic/1018-00_gt.tum
 .venv/bin/pytest -q
 ```
-Expected: todos os testes passam; `metrics.csv` com 4 linhas.
+Expected: todos os testes passam (incluindo `test_real_outputs_respect_contract`, agora não pulado); `metrics.csv` com 4 linhas.
 
-- [ ] **Step 4: Sanidade** — no 1018-00 **completo** (sem start/duration): ATE do FAST-LIO na mesma ordem de grandeza do reportado no paper do BotanicGarden para FAST-LIO2 (tabela de benchmark do paper/README). Se discrepar > 3×, investigar extrínseca IMU↔LiDAR e `timestamp_unit` antes de seguir.
+- [ ] **Step 7: Sanidade** — no 1018-00 **completo** (sem start/duration): ATE do FAST-LIO na mesma ordem de grandeza do reportado no paper do BotanicGarden para FAST-LIO2. Se discrepar > 3×, investigar extrínseca IMU↔LiDAR e `timestamp_unit` antes de seguir.
 
-- [ ] **Step 5: Smoke RELLIS** (exemplo de 60 s; com ou sem GT conforme Task 9).
+- [ ] **Step 8: Smoke RELLIS** — conforme veredito do Task 9 (A: com GT; B: sem GT; C: não roda na etapa supervisionada).
 
-- [ ] **Step 6: `docs/RESULTS_smoke.md`** — tabela do `metrics.csv` (ATE, eligible_frac, coverage, n_failures, longest_s, RPE) por método/sequência + observações (deskew usado, `uses_imu`, problemas encontrados). Em seguida liberar downloads: RELLIS 00000 (se preflight ok) e BotanicGarden 1018-13, e rodar `run_sequence.sh` completo em cada.
+- [ ] **Step 9: `docs/RESULTS_smoke.md`** — tabela do `metrics.csv` (ATE, eligible_frac, coverage, n_failures, n_resets, longest_s, longest_m, RPE) por método/sequência + observações (deskew usado, `uses_imu`, `matched_frac` do FAST-LIO, problemas encontrados). Em seguida liberar BotanicGarden 1018-13 (e RELLIS 00000 se veredito A/B) e rodar `run_sequence.sh` completo em cada.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add scripts/run_sequence.sh tests/test_pipeline_contract.py docs/RESULTS_smoke.md
-git commit -m "feat: pipeline ponta a ponta, teste de contrato e resultados do smoke"
+git add ofd/contract.py scripts/run_sequence.sh tests/test_contract.py tests/test_e2e_synthetic.py tests/test_pipeline_contract.py docs/RESULTS_smoke.md
+git commit -m "feat: contrato de saída, teste ponta a ponta sintético e pipeline real"
 ```
 
 ---
 
 ## Ordem de execução sugerida
 
-Tasks 1–8 (núcleo puro, sem dados) → **em paralelo**: Task 9 (download pequeno RELLIS) e início dos builds das Tasks 12–14 (spike de dependências; os builds não dependem de dados) → download do BotanicGarden 1018-00 → Task 10 → 11 → 12 → 13 → 14 → 15.
+Execução nativa e sequencial, com **revisão (pausa + revisor) nos marcos**:
+
+1. Tasks 1–4 → **revisão 1** (convenções de pose e causalidade).
+2. Tasks 5–8 → **revisão 2** (indicadores, schema, métricas). Rodar também o Step 1–3 da Task 15 (contrato + E2E sintético) aqui, pois só depende do núcleo.
+3. Em paralelo ao núcleo: Task 9 (download pequeno do RELLIS) e início dos builds das Tasks 12–14 (spike de dependências; não dependem de dados). Download do BotanicGarden 1018-00.
+4. Task 10 → **revisão 3** (extração real: `scans.csv`, `deskew`, pares estéreo).
+5. Tasks 11–12 → **revisão 4** (LiDAR: `matched_frac`, fitness, ATE do FAST-LIO).
+6. Tasks 13–14 → **revisão 5** (VOs: build, patches, tempo real, sem loop).
+7. Task 15 Steps 4–10 (pipeline real, sanidade, resultados).

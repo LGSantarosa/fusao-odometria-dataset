@@ -1,6 +1,6 @@
 # Dataset de Odometrias para Fusão VO/LO — Design
 
-**Data:** 2026-10-14 (rev. 2 — incorpora revisão: vazamento de GT, causalidade, FAST-LIO como LIO,
+**Data:** 2026-10-14 (rev. 4 — intervalos assíncronos explícitos (age como feature + velocidade em se(3)), deskew só com 100% dos scans válidos, instante de disponibilidade = fim do scan, falhas a partir do estado, três saídas do preflight do RELLIS. Rev. 2 — incorpora revisão: vazamento de GT, causalidade, FAST-LIO como LIO,
 timestamps por ponto, contrato de frames, cobertura)
 **Contexto:** artigo do Edvaldo (1º autor, mestrado PUCPR, orientador Prof. Marco Teixeira) sobre fusão
 adaptativa de odometria visual e LiDAR. Parte do Luiz: **gerar o dataset de entrada do modelo de fusão**.
@@ -72,13 +72,22 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
   `T_W_L = T_W_S · T_L_S⁻¹`, equivalente para incrementos: `ΔT_L = T_L_S · ΔT_S · T_L_S⁻¹`.
   O frame mundo de cada método é arbitrário; como só ΔT entra no dataset, ele não precisa ser alinhado.
 - **Quaternion:** (qx, qy, qz, qw) com **qw ≥ 0** (sinal normalizado).
-- **Sincronização (estritamente causal):** grade de tempo = timestamps do LiDAR (10 Hz). Para cada método e
+- **Instante de disponibilidade:** uma estimativa só "existe" quando seu dado de entrada terminou de ser
+  capturado. Para LiDAR, `end_ns` = header + deslocamento até o último ponto (via semântica do tempo por
+  ponto; se desconhecida, header). FAST-LIO publica com `lidar_end_time`, consistente com `end_ns`. Para VO,
+  o timestamp da imagem (latência de processamento offline é ignorada — premissa documentada).
+- **Sincronização (estritamente causal):** grade de tempo = `end_ns` dos scans do LiDAR (10 Hz). Para cada método e
   passo k usa-se a **última pose com `src_ts ≤ t_k`**; **sem interpolação** (nenhum uso de pose posterior a
   t_k). Válido só se `0 ≤ age_ms ≤ max_age_ms` (configurável; padrão **100 ms** = um período da câmera a
   10 Hz nos bags do BotanicGarden — 50 ms invalidaria passos de métodos sem falha). Colunas:
   `m_src_ts`, `m_age_ms = t_k − m_src_ts`, e **`m_dt_ms` = src_ts(k) − src_ts(k−1)** (intervalo efetivamente
   coberto pelo ΔT do método, que pode diferir entre métodos e do GT). Se as duas poses de origem forem a
   mesma (`m_dt_ms = 0`) → `m_valid=0`.
+- **Intervalos assíncronos:** os ΔT dos quatro métodos e do GT cobrem intervalos ligeiramente diferentes.
+  Por isso o dataset inclui, além do ΔT bruto, `m_dt_ms` e `m_age_ms` **como features**, e a **velocidade
+  incremental** `m_v = log(ΔT) / dt` em se(3) (`m_vx, m_vy, m_vz, m_wx, m_wy, m_wz`, em m/s e rad/s), que é
+  comparável entre métodos independentemente de dt. O GT ganha a mesma velocidade (`gt_vx … gt_wz`) como
+  target. **A confirmar com o Edvaldo** qual representação o modelo consumirá (ΔT + dt + age, ou velocidade).
 - **GT na grade:** o GT é rótulo (não entra no modelo), então **pode** ser interpolado (linear + SLERP) entre
   poses vizinhas. `gt_d*` = ΔT do GT entre t_{k−1} e t_k. Para `m_err_t/m_err_r`, o GT é interpolado nos
   **mesmos instantes de origem do método** (src_ts(k−1), src_ts(k)), para comparar intervalos idênticos.
@@ -103,7 +112,10 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
    [min, max] por scan. `extract` converte para o formato esperado pelo KISS-ICP (tempos por ponto
    normalizados em [0, 1] ao longo do scan) e valida: duração do scan ≈ 100 ms (10 Hz) e tempos monotônicos
    por ring/azimute. Se a semântica não puder ser determinada ou falhar na validação → `deskew=false`.
-   O que foi usado é registrado em `run.json`.
+   O que foi usado é registrado em `run.json`. Validação por scan também exige **monotonicidade do tempo ao
+   longo da ordem de disparo dentro de cada ring** (≥ 99% dos passos não decrescentes) e grava os limites
+   observados em `scans.csv` (`ts_ns, end_ns, t_min_s, t_max_s, span_s, valid`). **deskew=true somente se
+   100% dos scans da sequência/trecho passarem**; caso contrário, `deskew=false` para a sequência inteira.
 2. **run_***: cada algoritmo → `data/runs/<seq>/<metodo>/poses_causal.tum`, `indicators.csv`, `state.csv`
    (estado do tracking por frame), `run.json` (config, commit/patch, `uses_imu`, `deskew`).
 3. **align**: segmentação por método (`segment_id` incrementa a cada perda/reinicialização de tracking ou
@@ -120,14 +132,15 @@ Uma linha por passo k. Cada coluna tem um **papel** declarado em `schema.json`:
 | Coluna | Papel |
 |---|---|
 | `t`, `seq`, `dataset`, `gt_quality` | metadata |
-| `m_src_ts`, `m_age_ms`, `m_segment_id`, `m_uses_imu` | metadata |
-| `m_dt_ms` | feature |
+| `m_src_ts`, `m_segment_id`, `m_uses_imu` | metadata |
+| `m_dt_ms`, `m_age_ms` | feature |
+| `m_vx, m_vy, m_vz, m_wx, m_wy, m_wz` (velocidade se(3) do ΔT) | feature |
 | `m_dx, m_dy, m_dz, m_qx, m_qy, m_qz, m_qw` (ΔT do método) | feature |
 | `m_valid` | feature |
 | VO: `m_inliers`, `m_n_features`, `m_reproj_err`, `m_tracked_ratio` | feature |
 | LO/LIO: `m_fitness`, `m_inlier_rmse`, `m_unmatched_ratio`, `m_n_points` | feature |
 | `m_fitness_var_H`, `m_reproj_err_var_H` (variância móvel **causal**, janela H só de passado) | feature |
-| `gt_dx … gt_qw` (ΔT do GT) | **target** |
+| `gt_dx … gt_qw` (ΔT do GT), `gt_vx … gt_wz` | **target** |
 | `m_err_t`, `m_err_r` (erro do ΔT do método vs GT) | **evaluation** — nunca entrada do modelo |
 
 `unmatched_ratio` (antes "dinamicidade"): fração de pontos do scan k sem correspondência no scan k-1 após o
@@ -149,8 +162,15 @@ erro de registro — o nome evita sugerir mais do que mede.
 
 - Perda de tracking / reinicialização / troca de mapa → novo `segment_id`; ΔT da transição inválido.
 - `metrics.csv` por método/sequência: **ATE** (alinhamento SE3 por segmento) e **RPE** (Δ=1 frame e
-  Δ=10 m), **e também** cobertura (% de passos válidos), nº de falhas/reinicializações, maior trecho contínuo
-  (s e m). Um método só é comparado por ATE junto com sua cobertura.
+  Δ=10 m), **e também**:
+  - `coverage`: fração dos passos da grade com `m_valid=1`;
+  - `n_failures`: nº de perdas de tracking, contadas no `state.csv` (transições ok 1→0) — amostra repetida
+    ou pose velha **não** contam como falha;
+  - `n_resets`: nº de segmentos − 1;
+  - `longest_s` / `longest_m`: maior sequência contínua de passos válidos **do mesmo segmento** na grade,
+    em segundos e em metros percorridos no GT;
+  - `eligible_frac`: comprimento do GT coberto por segmentos elegíveis ÷ comprimento total do GT (≤ 1).
+  Um método só é comparado por ATE junto com sua cobertura.
 - **Segmentos para ATE:** só entram segmentos com **≥ 30 s e ≥ 20 m percorridos (no GT)**; os menores contam
   como não cobertos. ATE da sequência = **média ponderada pelo nº de poses** dos segmentos elegíveis
   (RMSE agregado: √(Σ nᵢ·RMSEᵢ² / Σ nᵢ)). Reporta-se também a fração da trajetória coberta por segmentos
@@ -166,10 +186,21 @@ erro de registro — o nome evita sugerir mais do que mede.
   válidas), variância móvel causal (mudar o futuro não altera o valor em k).
 - **Preflight de GT do RELLIS:** o bag de exemplo de 60 s garante sensores, mas `poses.txt` é indexado por
   scan da sequência completa. Antes de qualquer download grande, provar o mapeamento amostra→pose
-  (timestamps do bag vs índices/tempos do `poses.txt` / arquivos de scan). Se não existir mapeamento, o smoke
-  de 60 s vai até o schema **sem métricas de GT**, e o end-to-end completo do RELLIS espera a sequência 00000.
+  (timestamps do bag vs índices/tempos do `poses.txt` / arquivos de scan), com casamento **monotônico e
+  um-para-um**. Três saídas:
+  1. **amostra mapeável** → smoke completo com GT e libera o download da 00000;
+  2. **amostra não mapeável, mas a sequência completa resolve** (ex.: `poses.txt` indexado por scan da 00000
+     inteira, com timestamps disponíveis só nela) → smoke de 60 s sem métricas de GT; libera **só** a 00000;
+  3. **GT incompatível / não verificável** → RELLIS sai da etapa supervisionada (pode ficar apenas como
+     dado não rotulado/teste qualitativo); o artigo segue com BotanicGarden.
 - Smoke test: exemplo de 60 s do RELLIS (sujeito ao preflight) e trecho do 1018-00 atravessando todo o
   pipeline.
+- Teste ponta a ponta **sintético** (nunca pulado): execuções falsas dos 4 métodos → `build_dataset` →
+  `evaluate` → verificação de contrato (causalidade, qw ≥ 0, papéis, sem vazamento).
+- **Reprodutibilidade:** versões Python travadas (`requirements.lock`), commits fixos de todos os repositórios
+  C++, mudanças de build como patches versionados.
+- **VOs alimentadas em tempo real** (respeitando os timestamps; taxa configurável), para que as threads de
+  mapeamento não fiquem para trás e o comportamento seja o de operação online.
 - Testes de `extract` para tempo por ponto: unidade/referência sintéticas (scan_start, scan_end, absoluto)
   → mesma normalização [0, 1].
 - Sanidade: ATE do FAST-LIO no BotanicGarden na ordem do reportado no paper do dataset.
