@@ -51,8 +51,10 @@ def stop_group(p, grace_s=15.0):
     p.poll()
 
 
-def assert_not_running(pattern):
-    r = subprocess.run(["pgrep", "-af", pattern], capture_output=True, text=True)
-    others = [ln for ln in r.stdout.splitlines() if ln and int(ln.split()[0]) != os.getpid()]
-    if others:
-        raise RuntimeError(f"processo '{pattern}' já em execução: {others}")
+def assert_not_running(name):
+    """Falha se existir processo cujo NOME é exatamente `name` (pgrep -x); linhas de comando que apenas
+    mencionam o nome (shells, o próprio pgrep) não contam."""
+    r = subprocess.run(["pgrep", "-x", name], capture_output=True, text=True)
+    pids = [int(x) for x in r.stdout.split() if alive(int(x))]
+    if pids:
+        raise RuntimeError(f"processo '{name}' já em execução: pids {pids}")
