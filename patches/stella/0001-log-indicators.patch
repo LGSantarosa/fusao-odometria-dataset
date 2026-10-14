@@ -1,0 +1,73 @@
+diff --git a/src/stella_vslam/system.h b/src/stella_vslam/system.h
+index 33d8734..a8e64fa 100644
+--- a/src/stella_vslam/system.h
++++ b/src/stella_vslam/system.h
+@@ -109,6 +109,9 @@ public:
+     //! Disable the loop detector
+     void disable_loop_detector();
+ 
++    //! ofd: acesso ao tracker (estado e indicadores do frame atual)
++    tracking_module* get_tracker() const { return tracker_; }
++
+     //! The loop detector is enabled or not
+     bool loop_detector_is_enabled() const;
+ 
+diff --git a/src/stella_vslam/tracking_module.cc b/src/stella_vslam/tracking_module.cc
+index 02a2339..4d1abb2 100644
+--- a/src/stella_vslam/tracking_module.cc
++++ b/src/stella_vslam/tracking_module.cc
+@@ -166,6 +166,37 @@ std::shared_ptr<Mat44_t> tracking_module::feed_frame(data::frame curr_frm) {
+         }
+     }
+ 
++    // ofd: indicadores causais (landmarks inliers e erro de reprojeção médio com a pose atual)
++    {
++        const auto n = curr_frm_.frm_obs_.undist_keypts_.size();
++        last_n_features_ = static_cast<unsigned int>(n);
++        last_inliers_ = 0;
++        double se = 0.0;
++        unsigned int cnt = 0;
++        if (succeeded && curr_frm_.pose_is_valid()) {
++            const Mat44_t pose_cw = curr_frm_.get_pose_cw();
++            const Mat33_t rot_cw = pose_cw.block<3, 3>(0, 0);
++            const Vec3_t trans_cw = pose_cw.block<3, 1>(0, 3);
++            for (unsigned int idx = 0; idx < n; ++idx) {
++                const auto& lm = curr_frm_.get_landmark(idx);
++                if (!lm || lm->will_be_erased()) {
++                    continue;
++                }
++                ++last_inliers_;
++                Vec2_t reproj;
++                float x_right;
++                if (!camera_->reproject_to_image(rot_cw, trans_cw, lm->get_pos_in_world(), reproj, x_right)) {
++                    continue;
++                }
++                const auto& kp = curr_frm_.frm_obs_.undist_keypts_.at(idx).pt;
++                se += std::hypot(reproj(0) - kp.x, reproj(1) - kp.y);
++                ++cnt;
++            }
++        }
++        last_reproj_err_ = cnt ? se / cnt : -1.0;
++        last_tracked_ratio_ = n ? static_cast<double>(last_inliers_) / n : 0.0;
++    }
++
+     std::shared_ptr<Mat44_t> cam_pose_wc = nullptr;
+     // store the relative pose from the reference keyframe to the current frame
+     // to update the camera pose at the beginning of the next tracking process
+diff --git a/src/stella_vslam/tracking_module.h b/src/stella_vslam/tracking_module.h
+index 2ce6417..b85e658 100644
+--- a/src/stella_vslam/tracking_module.h
++++ b/src/stella_vslam/tracking_module.h
+@@ -146,6 +146,12 @@ public:
+     //! current frame and its image
+     data::frame curr_frm_;
+ 
++    //! ofd: indicadores do frame atual, calculados ao fim de feed_frame() com a pose deste instante
++    unsigned int last_inliers_ = 0;
++    unsigned int last_n_features_ = 0;
++    double last_reproj_err_ = -1.0;
++    double last_tracked_ratio_ = 0.0;
++
+ protected:
+     //-----------------------------------------
+     // tracking processes

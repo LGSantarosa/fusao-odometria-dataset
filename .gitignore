@@ -9,3 +9,4 @@ ros2_ws/install/
 ros2_ws/log/
 ros2_ws/src/
 tools/vo_runners/build/
+third_party/vo_runners_build*/
