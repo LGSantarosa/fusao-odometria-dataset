@@ -1,0 +1,83 @@
+"""Convert ROS1 bag -> ROS2, run FAST-LIO, play bag, record /Odometry -> common run format."""
+import argparse
+import json
+import subprocess
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from ofd import se3, tracks
+from ofd.matching import match_monotonic
+
+ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
+
+
+def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9):
+    order = np.argsort(raw_ts, kind="stable")
+    raw_ts, raw_Ts = np.asarray(raw_ts, np.int64)[order], raw_Ts[order]
+    end_ns = np.sort(np.asarray(end_ns, np.int64))
+    m = match_monotonic(end_ns, raw_ts, int(tol_ms * 1e6))
+    frac = float((m >= 0).mean()) if len(m) else 0.0
+    if frac < min_match:
+        near = [int(raw_ts[np.argmin(np.abs(raw_ts - e))] - e) for e in end_ns] if len(raw_ts) else [0]
+        raise RuntimeError(f"só {frac:.1%} dos scans casaram com poses; mediana(pose - scan) = "
+                           f"{np.median(near) / 1e6:.1f} ms — conferir timestamp_unit/end_ns")
+    ok = (m >= 0).astype(int)
+    state = pd.DataFrame({"ts_ns": end_ns, "ok": ok, "map_id": 0})
+    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "tol_ms": tol_ms}
+
+
+def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=None, duration=None):
+    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    if not Path(ros2_bag_dir).exists():
+        inc = " ".join(f"--include-topic {t}" for t in topics)
+        subprocess.run(["bash", "-c", f"env -u PYTHONPATH .venv/bin/rosbags-convert --src {bag1} --dst {ros2_bag_dir} {inc}"], check=True)
+    cfg_yaml = Path(cfg_yaml).resolve()
+    extra = (f" --start-offset {start}" if start else "") + (f" --playback-duration {duration}" if duration else "")
+    with open(out_dir / "log.txt", "w") as log:
+        node = subprocess.Popen(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
+                                 f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}"], stdout=log, stderr=log)
+        rec = subprocess.Popen(["bash", "-c", ROS + f"exec /usr/bin/python3 tools/fastlio_recorder.py "
+                                f"{out_dir / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
+        try:
+            time.sleep(5)
+            subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}{extra}"],
+                           check=True, stdout=log, stderr=log)
+            rec.wait(timeout=600)
+        finally:
+            for p in (rec, node):
+                if p.poll() is None:
+                    p.terminate()
+                    try:
+                        p.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+    raw_ts, raw_Ts = se3.load_tum(out_dir / "raw_odom.tum")
+    end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
+    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns)
+    commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
+    meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True,
+            "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
+            "start": start, "duration": duration, **info}
+    tracks.write_run(out_dir, ts, Ts, state, pd.DataFrame({"ts_ns": ts}), meta)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bag", required=True)
+    ap.add_argument("--ros2-bag", required=True)
+    ap.add_argument("--fastlio-config", required=True)
+    ap.add_argument("--seq-dir", required=True, help="extração correspondente (para lidar_stamps.csv)")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--topics", nargs="+", required=True)
+    ap.add_argument("--rate", type=float, default=0.5)
+    ap.add_argument("--start", type=float)
+    ap.add_argument("--duration", type=float)
+    a = ap.parse_args()
+    run(a.bag, a.ros2_bag, a.fastlio_config, a.seq_dir, a.out, a.topics, a.rate, a.start, a.duration)
+
+
+if __name__ == "__main__":
+    main()
