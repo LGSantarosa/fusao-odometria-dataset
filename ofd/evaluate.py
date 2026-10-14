@@ -92,7 +92,7 @@ def gt_path_length(df_seq):
     return float(_step_len(df_seq).sum())
 
 
-def coverage(df_seq, method, state):
+def coverage(df_seq, method, state, continuous_frame=False):
     v = df_seq[f"{method}_valid"].to_numpy().astype(int)
     seg = df_seq[f"{method}_segment_id"].to_numpy()
     t = df_seq["t"].to_numpy(np.int64)
@@ -100,7 +100,7 @@ def coverage(df_seq, method, state):
     st = state.sort_values("ts_ns")
     ok = st["ok"].to_numpy().astype(int)
     n_fail = int(np.sum((ok[:-1] == 1) & (ok[1:] == 0)))
-    segs = tracks.segments_from_state(st)["segment"]
+    segs = tracks.segments_from_state(st, continuous_frame)["segment"]
     n_resets = max(0, int(segs[segs >= 0].nunique()) - 1)
     best_s = best_m = 0.0
     start = None
@@ -131,7 +131,7 @@ def evaluate_sequence(seq_dir, runs_dir, table, T_L_S, min_dur_s=30.0, min_len_m
                      "eligible_frac": min(1.0, float(el["len_m"].sum() / total)) if total > 0 else 0.0,
                      "n_segments": len(sm), "n_eligible": len(el),
                      **rpe(tr, T_L_S[m], gt_ts, gt_Ts),
-                     **coverage(table, m, pd.read_csv(run / "state.csv"))})
+                     **coverage(table, m, pd.read_csv(run / "state.csv"), bool(meta.get("continuous_frame", False)))})
     return pd.DataFrame(rows)
 
 

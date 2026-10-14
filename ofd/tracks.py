@@ -16,14 +16,19 @@ class Track:
     segment: np.ndarray
 
 
-def segments_from_state(state: pd.DataFrame) -> pd.DataFrame:
+def segments_from_state(state: pd.DataFrame, continuous_frame: bool = False) -> pd.DataFrame:
+    """New segment on map change, and — unless the method keeps one world frame across missing outputs
+    (continuous_frame, e.g. FAST-LIO/KISS-ICP) — also on every ok 0->1 transition (VO loss/reset)."""
     st = state.sort_values("ts_ns").reset_index(drop=True)
     seg, cur, prev_ok, prev_map = [], -1, False, None
     for ok, mid in zip(st["ok"].astype(bool), st["map_id"]):
-        if ok and (not prev_ok or mid != prev_map):
+        restart = (not prev_ok) and (not continuous_frame or cur < 0)
+        if ok and (restart or mid != prev_map):
             cur += 1
         seg.append(cur if ok else -1)
-        prev_ok, prev_map = ok, mid
+        prev_ok = ok
+        if ok:
+            prev_map = mid
     return pd.DataFrame({"ts_ns": st["ts_ns"].astype(np.int64), "ok": st["ok"], "segment": seg})
 
 
@@ -35,14 +40,15 @@ def load_run(run_dir):
     keep = np.ones(len(ts), bool)
     keep[:-1] = ts[:-1] != ts[1:]  # keep last of duplicates
     ts, Ts = ts[keep], Ts[keep]
-    seg = segments_from_state(pd.read_csv(run_dir / "state.csv")).set_index("ts_ns")["segment"]
+    meta = json.loads((run_dir / "run.json").read_text())
+    seg = segments_from_state(pd.read_csv(run_dir / "state.csv"),
+                              bool(meta.get("continuous_frame", False))).set_index("ts_ns")["segment"]
     seg = seg[~seg.index.duplicated(keep="last")]
     s = seg.reindex(ts).fillna(-1).astype(np.int64).to_numpy()
     good = s >= 0
     track = Track(ts[good], Ts[good], s[good])
     ind = pd.read_csv(run_dir / "indicators.csv")
     ind = ind.drop_duplicates("ts_ns", keep="last").set_index("ts_ns").sort_index()
-    meta = json.loads((run_dir / "run.json").read_text())
     return track, ind, meta
 
 

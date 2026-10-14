@@ -25,3 +25,10 @@ def test_offset_mismatch_raises_with_diagnostic():
     end = np.arange(10) * 100 * MS
     with pytest.raises(RuntimeError, match="mediana"):
         run_fastlio.assemble(end + 50 * MS, poses(10), end)
+
+
+def test_lidar_runners_declare_continuous_frame():
+    import inspect
+    from ofd import run_kissicp
+    assert '"continuous_frame": True' in inspect.getsource(run_fastlio.run)
+    assert '"continuous_frame": True' in inspect.getsource(run_kissicp.run)

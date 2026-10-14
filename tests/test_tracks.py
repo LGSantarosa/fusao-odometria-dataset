@@ -51,3 +51,26 @@ def test_pose_on_lost_frame_is_dropped(tmp_path):
     (run / "run.json").write_text("{}")
     tr, _, _ = tracks.load_run(run)
     assert list(tr.ts_ns) == [10]
+
+
+def test_continuous_frame_method_does_not_split_on_missing_output(tmp_path):
+    # FAST-LIO/KISS-ICP: scan sem pose (ok=0) não muda o frame do mundo -> mesmo segmento
+    run = tmp_path / "r"; run.mkdir()
+    ts = [10, 20, 30, 40]
+    se3.save_tum(run / "poses_causal.tum", np.array([10, 20, 40], dtype=np.int64), np.stack([np.eye(4)] * 3))
+    pd.DataFrame({"ts_ns": ts, "ok": [1, 1, 0, 1], "map_id": 0}).to_csv(run / "state.csv", index=False)
+    pd.DataFrame({"ts_ns": ts}).to_csv(run / "indicators.csv", index=False)
+    (run / "run.json").write_text(json.dumps({"method": "fastlio", "continuous_frame": True}))
+    tr, _, _ = tracks.load_run(run)
+    assert list(tr.ts_ns) == [10, 20, 40] and list(tr.segment) == [0, 0, 0]
+
+
+def test_vo_still_splits_on_loss(tmp_path):
+    run = tmp_path / "r"; run.mkdir()
+    ts = [10, 20, 30, 40]
+    se3.save_tum(run / "poses_causal.tum", np.array([10, 20, 40], dtype=np.int64), np.stack([np.eye(4)] * 3))
+    pd.DataFrame({"ts_ns": ts, "ok": [1, 1, 0, 1], "map_id": 0}).to_csv(run / "state.csv", index=False)
+    pd.DataFrame({"ts_ns": ts}).to_csv(run / "indicators.csv", index=False)
+    (run / "run.json").write_text(json.dumps({"method": "orbslam3"}))
+    tr, _, _ = tracks.load_run(run)
+    assert list(tr.segment) == [0, 0, 1]

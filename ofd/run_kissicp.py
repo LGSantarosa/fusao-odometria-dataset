@@ -39,7 +39,7 @@ def run(seq_dir, out_dir, deskew):
         ok.append(1)
     end = stamps["end_ns"].to_numpy(np.int64)
     state = pd.DataFrame({"ts_ns": end, "ok": ok, "map_id": 0})
-    meta = {"method": "kissicp", "uses_imu": False, "sensor_frame": "lidar", "deskew": bool(deskew),
+    meta = {"method": "kissicp", "uses_imu": False, "sensor_frame": "lidar", "deskew": bool(deskew), "continuous_frame": True,
             "kiss_icp_version": __import__("kiss_icp").__version__,
             "config": json.loads(cfg.model_dump_json()) if hasattr(cfg, "model_dump_json") else str(cfg)}
     tracks.write_run(out_dir, end, np.stack(Ts), state, pd.DataFrame({"ts_ns": end}), meta)
