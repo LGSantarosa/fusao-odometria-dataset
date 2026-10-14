@@ -15,6 +15,7 @@ class DatasetConfig:
     max_age_ms: float = 100.0
     var_window: int = 10
     image_encoding: str = "mono8"
+    stereo: dict | None = None   # K0, D0, K1, D1, T_c0_c1 (4x4 row-major), size [w, h] → retificação na extração
 
 
 def load(path) -> DatasetConfig:
@@ -26,4 +27,5 @@ def load(path) -> DatasetConfig:
                 or not np.allclose(Rm @ Rm.T, np.eye(3), atol=1e-4) or not abs(np.linalg.det(Rm) - 1.0) < 1e-4):
             raise ValueError(f"T_L_S[{m}] não é SE3 válida")
     return DatasetConfig(d["name"], d["gt_quality"], d["topics"], d["point_time"], T,
-                         d.get("max_age_ms", 100.0), d.get("var_window", 10), d.get("image_encoding", "mono8"))
+                         d.get("max_age_ms", 100.0), d.get("var_window", 10), d.get("image_encoding", "mono8"),
+                         d.get("stereo"))

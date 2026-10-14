@@ -9,6 +9,7 @@ import pandas as pd
 from rosbags.highlevel import AnyReader
 
 from ofd import config, pointtime, se3
+from ofd.rectify import StereoRectifier
 
 _DT = {1: "i1", 2: "u1", 3: "i2", 4: "u2", 5: "i4", 6: "u4", 7: "f4", 8: "f8"}
 
@@ -38,12 +39,37 @@ def image_to_array(msg):
     raise ValueError(f"encoding não suportado: {msg.encoding}")
 
 
-def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
+def gt_from_bag(bag, topic):
+    """PoseStamped topic of a separate GT bag -> (ts_ns, Ts), sorted."""
+    rows = []
+    with AnyReader([Path(bag)]) as r:
+        conns = [c for c in r.connections if c.topic == topic]
+        if not conns:
+            raise ValueError(f"tópico {topic} não existe em {bag}")
+        for c, _, raw in r.messages(connections=conns):
+            m = r.deserialize(raw, c.msgtype)
+            p, q = m.pose.position, m.pose.orientation
+            rows.append((stamp_ns(m), se3.to_mat([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])))
+    rows.sort(key=lambda x: x[0])
+    return np.array([r[0] for r in rows], dtype=np.int64), np.stack([r[1] for r in rows])
+
+
+def _rectifier(cfg):
+    st = cfg.stereo
+    if not st:
+        return None
+    return StereoRectifier(st["K0"], st["D0"], st["K1"], st["D1"],
+                           np.asarray(st["T_c0_c1"], float).reshape(4, 4), st["size"])
+
+
+def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
     out = Path(out)
     for d in ["images/left", "images/right", "clouds"]:
         (out / d).mkdir(parents=True, exist_ok=True)
     tp = cfg.topics
     left, right, scans, deskew_ok = {}, {}, [], []
+    rect = _rectifier(cfg)
+    pending = {}  # ts -> {side: img}; retificação exige o par
     gt_rows = []
     with AnyReader([Path(bag)]) as r:
         start = r.start_time + int((t0_s or 0) * 1e9)
@@ -55,8 +81,18 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
             ts = stamp_ns(m)
             if c.topic in (tp["left"], tp["right"]):
                 side = "left" if c.topic == tp["left"] else "right"
-                cv2.imwrite(str(out / "images" / side / f"{ts}.png"), image_to_array(m))
                 (left if side == "left" else right)[ts] = True
+                img = image_to_array(m)
+                if rect is None:
+                    cv2.imwrite(str(out / "images" / side / f"{ts}.png"), img)
+                else:
+                    pair = pending.setdefault(ts, {})
+                    pair[side] = img
+                    if len(pair) == 2:
+                        a, b = rect.apply(pair.pop("left"), pair.pop("right"))
+                        cv2.imwrite(str(out / "images" / "left" / f"{ts}.png"), a)
+                        cv2.imwrite(str(out / "images" / "right" / f"{ts}.png"), b)
+                        del pending[ts]
             elif c.topic == tp["lidar"]:
                 a = cloud_to_struct(m)
                 xyz = np.c_[a["x"], a["y"], a["z"]].astype(np.float32)
@@ -89,6 +125,8 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
     sc[["ts_ns", "end_ns"]].to_csv(out / "lidar_stamps.csv", index=False)
     if gt_tum:
         ts_gt, Ts_gt = se3.load_tum(gt_tum)
+    elif gt_bag:
+        ts_gt, Ts_gt = gt_from_bag(gt_bag, tp.get("gt", "/gt_poses"))
     elif gt_rows:
         gt_rows.sort(key=lambda x: x[0])
         ts_gt = np.array([g[0] for g in gt_rows], dtype=np.int64)
@@ -99,7 +137,8 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None):
     frac = float(np.mean(deskew_ok)) if deskew_ok else 0.0
     meta = {"bag": str(bag), "n_scans": len(scans), "n_stereo": len(pairs), "n_gt": int(len(ts_gt)),
             "point_time": cfg.point_time, "deskew_valid_frac": frac, "deskew": bool(deskew_ok) and frac == 1.0,
-            "unpaired_left": len(set(left) - set(right)), "unpaired_right": len(set(right) - set(left))}
+            "unpaired_left": len(set(left) - set(right)), "unpaired_right": len(set(right) - set(left)),
+            "rectified": rect.params() if rect is not None else None}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     return meta
 
@@ -112,8 +151,9 @@ def main():
     ap.add_argument("--start", type=float)
     ap.add_argument("--duration", type=float)
     ap.add_argument("--gt-tum")
+    ap.add_argument("--gt-bag", help="bag separado com o GT (tópico topics.gt do config)")
     a = ap.parse_args()
-    print(json.dumps(extract(a.bag, config.load(a.config), a.out, a.start, a.duration, a.gt_tum), indent=2))
+    print(json.dumps(extract(a.bag, config.load(a.config), a.out, a.start, a.duration, a.gt_tum, a.gt_bag), indent=2))
 
 
 if __name__ == "__main__":

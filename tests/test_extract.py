@@ -74,3 +74,45 @@ def test_extract_one_bad_scan_disables_deskew(tmp_path, monkeypatch):
                                {m: np.eye(4) for m in ["orbslam3", "stella", "fastlio", "kissicp"]})
     meta = extract.extract(bag, cfg, tmp_path / "out", None, None, None)
     assert meta["deskew"] is False and meta["deskew_valid_frac"] < 1.0
+
+
+PoseStamped = TS.types["geometry_msgs/msg/PoseStamped"]
+Pose = TS.types["geometry_msgs/msg/Pose"]
+Point = TS.types["geometry_msgs/msg/Point"]
+Quaternion = TS.types["geometry_msgs/msg/Quaternion"]
+
+
+def make_gt_bag(p, base, n=3):
+    with Writer(p) as w:
+        c = w.add_connection("/gt_poses", PoseStamped.__msgtype__, typestore=TS)
+        for k in range(n):
+            t = base + k * 100_000_000
+            m = PoseStamped(header=hdr(t), pose=Pose(position=Point(x=float(k), y=0.0, z=0.0),
+                                                     orientation=Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)))
+            w.write(c, t, TS.serialize_ros1(m, PoseStamped.__msgtype__))
+
+
+def _cfg(stereo=None):
+    return config.DatasetConfig("x", "survey", {"left": "/l", "right": "/r", "lidar": "/p", "imu": "/i", "gt": "/gt_poses"},
+                                {"field": "time", "unit": "s", "ref": "scan_start"},
+                                {m: np.eye(4) for m in ["orbslam3", "stella", "fastlio", "kissicp"]}, stereo=stereo)
+
+
+def test_extract_gt_from_separate_bag(tmp_path):
+    bag = tmp_path / "x.bag"; base = make_bag(bag)
+    make_gt_bag(tmp_path / "gt.bag", base)
+    extract.extract(bag, _cfg(), tmp_path / "out", None, None, None, gt_bag=tmp_path / "gt.bag")
+    from ofd import se3
+    ts, Ts = se3.load_tum(tmp_path / "out/gt.tum")
+    assert len(ts) == 3 and ts[0] == base and abs(Ts[2][0, 3] - 2.0) < 1e-9
+
+
+def test_extract_rectifies_when_stereo_calib_given(tmp_path):
+    bag = tmp_path / "x.bag"; make_bag(bag)
+    K = [[5.0, 0, 3.0], [0, 5.0, 2.0], [0, 0, 1]]
+    T01 = np.eye(4); T01[0, 3] = 0.2
+    stereo = {"K0": K, "D0": [0, 0, 0, 0, 0], "K1": K, "D1": [0, 0, 0, 0, 0],
+              "T_c0_c1": T01.ravel().tolist(), "size": [6, 4]}
+    meta = extract.extract(bag, _cfg(stereo), tmp_path / "out", None, None, None)
+    r = meta["rectified"]
+    assert abs(r["baseline"] - 0.2) < 1e-9 and r["width"] == 6 and len(r["T_cam0_rect"]) == 16
