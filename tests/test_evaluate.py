@@ -81,3 +81,17 @@ def test_longest_breaks_on_segment_change():
 def test_gt_path_length_ignores_nan():
     df = table([0, 1, 1]); df.loc[0, "gt_dx"] = np.nan
     assert abs(evaluate.gt_path_length(df) - 1.0) < 1e-12
+
+
+def test_rpe_10m_includes_rotation_with_known_drift():
+    # GT reto; estimativa com deriva de guinada constante de 0.01 rad por passo de 1 m
+    n = 40
+    gt = straight(n, 1.0)
+    Ts = np.stack([np.eye(4)] * n)
+    for i in range(n):
+        Ts[i][:3, :3] = R.from_euler("z", 0.01 * i).as_matrix()
+        Ts[i][0, 3] = float(i)
+    est = Track(gt.ts_ns, Ts, gt.segment)
+    r = evaluate.rpe(est, np.eye(4), gt.ts_ns, gt.Ts, delta_m=10.0)
+    assert abs(r["rpe_r_10m"] - 0.10) < 1e-9   # 10 passos × 0.01 rad
+    assert abs(r["rpe_r_frame"] - 0.01) < 1e-9

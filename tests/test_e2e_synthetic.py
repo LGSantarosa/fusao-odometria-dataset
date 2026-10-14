@@ -9,17 +9,25 @@ MS = 1_000_000
 def test_e2e(tmp_path):
     seq, runs = tmp_path / "ext", tmp_path / "runs"
     seq.mkdir()
-    n = 450                                                  # 45 s a 10 Hz, 1 m/s
-    end = (10**18 + np.arange(n) * 100 * MS).astype(np.int64)
+    n = 450                                                  # 45 s a 10 Hz, movimento acelerado
+    t0 = 10**18
+    end = (t0 + np.arange(n) * 100 * MS).astype(np.int64)
+    vo_ts = end - 30 * MS                                    # câmera 30 ms antes do fim do scan
     pd.DataFrame({"ts_ns": end - 100 * MS, "end_ns": end}).to_csv(seq / "lidar_stamps.csv", index=False)
-    gt = np.stack([np.eye(4)] * n)
-    for i in range(n):
-        gt[i][0, 3] = 0.1 * i
-    se3.save_tum(seq / "gt.tum", end, gt)
+
+    def pose_at(ts_ns):                                      # x(t) = t + 0.05 t²  (não linear: ΔT depende do instante)
+        t = (np.asarray(ts_ns, np.int64) - t0) / 1e9
+        Ts = np.stack([np.eye(4)] * len(t))
+        Ts[:, 0, 3] = t + 0.05 * t ** 2
+        return Ts
+
+    gt_ts = np.sort(np.r_[end, vo_ts])                       # GT também amostrado nos instantes da VO (interp. exata)
+    gt = pose_at(end)
+    se3.save_tum(seq / "gt.tum", gt_ts, pose_at(gt_ts))
     rng = np.random.default_rng(0)
     for m, kind in schema.METHODS.items():
-        ts = end - (30 * MS if kind == "vo" else 0)       # VO: câmera 30 ms antes do fim do scan
-        Ts = gt.copy()
+        ts = vo_ts if kind == "vo" else end
+        Ts = pose_at(ts)                                     # pose no instante do próprio método (sem "futuro")
         ok = np.ones(n, int)
         if m == "stella":
             ok[200:220] = 0                                  # perde tracking 2 s
@@ -43,5 +51,8 @@ def test_e2e(tmp_path):
     assert met.loc["stella", "coverage"] < met.loc["fastlio", "coverage"]
     assert met.loc["orbslam3", "ate_rmse"] > 0.1
     assert (met["eligible_frac"] <= 1.0).all()
-    np.testing.assert_allclose(df.loc[df["fastlio_valid"] == 1, "fastlio_vx"], 1.0, atol=1e-6)
-    np.testing.assert_allclose(df["gt_vx"].dropna(), 1.0, atol=1e-6)
+    v = df[df["fastlio_valid"] == 1]
+    np.testing.assert_allclose(v["fastlio_vx"], v["gt_vx"], atol=1e-9)
+    # VO causal com timestamp 30 ms antes: erro contra o GT nos mesmos instantes de origem é zero fora da perda
+    s = df[df["stella_valid"] == 1]
+    assert len(s) > 400 and s["stella_err_t"].max() < 1e-9

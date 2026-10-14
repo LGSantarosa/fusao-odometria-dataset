@@ -21,7 +21,9 @@ def load(path) -> DatasetConfig:
     d = yaml.safe_load(Path(path).read_text())
     T = {m: np.asarray(v, float).reshape(4, 4) for m, v in d["T_L_S"].items()}
     for m, M in T.items():
-        if not np.allclose(M[3], [0, 0, 0, 1]) or not np.allclose(M[:3, :3] @ M[:3, :3].T, np.eye(3), atol=1e-4):
+        Rm = M[:3, :3]
+        if (not np.isfinite(M).all() or not np.allclose(M[3], [0, 0, 0, 1])
+                or not np.allclose(Rm @ Rm.T, np.eye(3), atol=1e-4) or not abs(np.linalg.det(Rm) - 1.0) < 1e-4):
             raise ValueError(f"T_L_S[{m}] não é SE3 válida")
     return DatasetConfig(d["name"], d["gt_quality"], d["topics"], d["point_time"], T,
                          d.get("max_age_ms", 100.0), d.get("var_window", 10), d.get("image_encoding", "mono8"))

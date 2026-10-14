@@ -58,7 +58,7 @@ def aggregate_ate(seg_df):
 def rpe(track: Track, T_L_S, gt_ts, gt_Ts, delta_m=10.0):
     est = _to_lidar(track.Ts, T_L_S)
     gts = [se3.interp(gt_ts, gt_Ts, int(t)) for t in track.ts_ns]
-    et, er, e10 = [], [], []
+    et, er, e10, r10 = [], [], [], []
     for k in range(1, len(track.ts_ns)):
         if track.segment[k] != track.segment[k - 1] or gts[k] is None or gts[k - 1] is None:
             continue
@@ -77,10 +77,11 @@ def rpe(track: Track, T_L_S, gt_ts, gt_Ts, delta_m=10.0):
             i, j = idx[a], idx[b]
             E = se3.delta(se3.delta(gts[i], gts[j]), se3.delta(est[i], est[j]))
             e10.append(np.linalg.norm(E[:3, 3]))
+            r10.append(se3.rot_angle(E))
 
     def rm(x):
         return float(np.sqrt(np.mean(np.square(x)))) if x else float("nan")
-    return {"rpe_t_frame": rm(et), "rpe_r_frame": rm(er), "rpe_t_10m": rm(e10)}
+    return {"rpe_t_frame": rm(et), "rpe_r_frame": rm(er), "rpe_t_10m": rm(e10), "rpe_r_10m": rm(r10)}
 
 
 def _step_len(df_seq):

@@ -22,3 +22,24 @@ def test_rejects_non_se3(tmp_path):
     p = tmp_path / "c.yaml"; p.write_text(yaml.safe_dump(d))
     with pytest.raises(ValueError):
         config.load(p)
+
+
+def _write(tmp_path, M):
+    d = {"name": "x", "gt_quality": "survey", "topics": {}, "point_time": {},
+         "T_L_S": {"kissicp": np.asarray(M, float).ravel().tolist()}}
+    p = tmp_path / "c.yaml"; p.write_text(yaml.safe_dump(d))
+    return p
+
+
+def test_rejects_reflection(tmp_path):
+    import pytest
+    M = np.eye(4); M[2, 2] = -1.0  # ortogonal, mas det(R) = -1
+    with pytest.raises(ValueError):
+        config.load(_write(tmp_path, M))
+
+
+def test_rejects_nan(tmp_path):
+    import pytest
+    M = np.eye(4); M[0, 3] = np.nan
+    with pytest.raises(ValueError):
+        config.load(_write(tmp_path, M))
