@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ofd import config, fastlio_bag, se3, tracks
+from ofd import config, fastlio_bag, proc, se3, tracks
 from ofd.matching import match_monotonic
 
 ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
@@ -76,10 +76,11 @@ def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration
         os.rename(tmp, ros2_bag_dir)
     cfg_yaml = Path(cfg_yaml).resolve()
     shutil.copy2(cfg_yaml, attempt / "fastlio_config.yaml")   # configuração efetiva desta tentativa
+    proc.assert_not_running("fastlio_mapping")   # nó órfão de outra execução contaminaria esta
     with open(attempt / "log.txt", "w") as log:
-        node = subprocess.Popen(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
+        node = proc.spawn(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
                                  f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}"], stdout=log, stderr=log)
-        rec = subprocess.Popen(["bash", "-c", ROS + f"exec /usr/bin/python3 tools/fastlio_recorder.py "
+        rec = proc.spawn(["bash", "-c", ROS + f"exec /usr/bin/python3 tools/fastlio_recorder.py "
                                 f"{attempt / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
         try:
             time.sleep(5)
@@ -88,12 +89,8 @@ def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration
             rec.wait(timeout=600)
         finally:
             for p in (rec, node):
-                if p.poll() is None:
-                    p.terminate()
-                    try:
-                        p.wait(timeout=30)
-                    except subprocess.TimeoutExpired:
-                        p.kill()
+                proc.stop_group(p)
+    proc.assert_not_running("fastlio_mapping")      # garante que nada sobreviveu à tentativa
     end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
     commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
     meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True, "continuous_frame": True,
