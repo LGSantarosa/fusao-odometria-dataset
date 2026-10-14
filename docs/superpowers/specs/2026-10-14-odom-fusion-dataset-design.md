@@ -34,8 +34,10 @@ mais as trajetórias completas (formato TUM) e as métricas ATE/RPE + cobertura 
 | Bags ROS 1 | convertidos com `rosbags` (pip) | Não precisa de ROS 1. |
 | Docker | não usado | Usuário sem permissão no socket; tudo nativo (Ubuntu 24.04 + ROS 2 Jazzy). |
 
-**Ordem de download (economia):** 1) RELLIS-3D exemplo full-stack de 60 s (4,2 GB) e BotanicGarden
-**1018-00** (13 GB) → smoke tests; 2) só depois RELLIS **00000** (23 GB) e BotanicGarden **1018-13** (21 GB).
+**Ordem de download (economia):** 0) só `poses.txt`/arquivos de poses do RELLIS (174 MB) + exemplo de 60 s
+(4,2 GB) → **preflight do mapeamento de GT** (§9); 1) BotanicGarden **1018-00** (13 GB) → smoke tests;
+2) só depois RELLIS **00000** (23 GB) e BotanicGarden **1018-13** (21 GB). Downloads completos ficam
+retidos até o preflight passar.
 Extração multiplica o volume (PNG/NPZ) — monitorar disco (569 GB livres).
 
 ## 3. Arquitetura
@@ -70,10 +72,16 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
   `T_W_L = T_W_S · T_L_S⁻¹`, equivalente para incrementos: `ΔT_L = T_L_S · ΔT_S · T_L_S⁻¹`.
   O frame mundo de cada método é arbitrário; como só ΔT entra no dataset, ele não precisa ser alinhado.
 - **Quaternion:** (qx, qy, qz, qw) com **qw ≥ 0** (sinal normalizado).
-- **Sincronização:** grade de tempo = timestamps do LiDAR (10 Hz). Para cada método, usa-se a pose
-  disponível mais próxima **no passado ou com |Δt| ≤ 50 ms**; interpolação (linear + SLERP) só entre duas
-  poses válidas do mesmo segmento e afastadas ≤ 150 ms. Colunas `m_src_ts` (timestamp da pose de origem) e
-  `m_age_ms` (t_grade − m_src_ts) registradas. Fora da tolerância → `m_valid=0`.
+- **Sincronização (estritamente causal):** grade de tempo = timestamps do LiDAR (10 Hz). Para cada método e
+  passo k usa-se a **última pose com `src_ts ≤ t_k`**; **sem interpolação** (nenhum uso de pose posterior a
+  t_k). Válido só se `0 ≤ age_ms ≤ max_age_ms` (configurável; padrão **100 ms** = um período da câmera a
+  10 Hz nos bags do BotanicGarden — 50 ms invalidaria passos de métodos sem falha). Colunas:
+  `m_src_ts`, `m_age_ms = t_k − m_src_ts`, e **`m_dt_ms` = src_ts(k) − src_ts(k−1)** (intervalo efetivamente
+  coberto pelo ΔT do método, que pode diferir entre métodos e do GT). Se as duas poses de origem forem a
+  mesma (`m_dt_ms = 0`) → `m_valid=0`.
+- **GT na grade:** o GT é rótulo (não entra no modelo), então **pode** ser interpolado (linear + SLERP) entre
+  poses vizinhas. `gt_d*` = ΔT do GT entre t_{k−1} e t_k. Para `m_err_t/m_err_r`, o GT é interpolado nos
+  **mesmos instantes de origem do método** (src_ts(k−1), src_ts(k)), para comparar intervalos idênticos.
 - **Causalidade:** para as VOs, a pose usada é a **retornada pelo tracking no próprio frame** (logada pelo
   patch no momento do `Track*`), nunca o arquivo de trajetória final reotimizado. FAST-LIO (`/Odometry`) e
   KISS-ICP já são causais.
@@ -90,8 +98,12 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
 
 1. **extract**: bag → `images/left|right/<ts_ns>.png`, `clouds/<ts_ns>.npz` (**todos os campos**: x, y, z,
    intensity, ring e tempo por ponto quando existirem), `gt.tum`, `calib.yaml`, `meta.json`
-   (inclui `has_point_time`). KISS-ICP roda com `deskew=true` só se `has_point_time`; caso contrário
-   `deskew=false`, registrado no run.
+   com a **semântica do tempo por ponto**: `point_time_field` (ex.: `time`, `t`), `point_time_unit`
+   (s, ns, …), `point_time_ref` (`scan_start` | `scan_end` | `absolute`) e o intervalo observado
+   [min, max] por scan. `extract` converte para o formato esperado pelo KISS-ICP (tempos por ponto
+   normalizados em [0, 1] ao longo do scan) e valida: duração do scan ≈ 100 ms (10 Hz) e tempos monotônicos
+   por ring/azimute. Se a semântica não puder ser determinada ou falhar na validação → `deskew=false`.
+   O que foi usado é registrado em `run.json`.
 2. **run_***: cada algoritmo → `data/runs/<seq>/<metodo>/poses_causal.tum`, `indicators.csv`, `state.csv`
    (estado do tracking por frame), `run.json` (config, commit/patch, `uses_imu`, `deskew`).
 3. **align**: segmentação por método (`segment_id` incrementa a cada perda/reinicialização de tracking ou
@@ -109,6 +121,7 @@ Uma linha por passo k. Cada coluna tem um **papel** declarado em `schema.json`:
 |---|---|
 | `t`, `seq`, `dataset`, `gt_quality` | metadata |
 | `m_src_ts`, `m_age_ms`, `m_segment_id`, `m_uses_imu` | metadata |
+| `m_dt_ms` | feature |
 | `m_dx, m_dy, m_dz, m_qx, m_qy, m_qz, m_qw` (ΔT do método) | feature |
 | `m_valid` | feature |
 | VO: `m_inliers`, `m_n_features`, `m_reproj_err`, `m_tracked_ratio` | feature |
@@ -135,9 +148,13 @@ erro de registro — o nome evita sugerir mais do que mede.
 ## 8. Falhas e avaliação
 
 - Perda de tracking / reinicialização / troca de mapa → novo `segment_id`; ΔT da transição inválido.
-- `metrics.csv` por método/sequência: **ATE** (alinhamento SE3, por segmento) e **RPE** (Δ=1 frame e
+- `metrics.csv` por método/sequência: **ATE** (alinhamento SE3 por segmento) e **RPE** (Δ=1 frame e
   Δ=10 m), **e também** cobertura (% de passos válidos), nº de falhas/reinicializações, maior trecho contínuo
   (s e m). Um método só é comparado por ATE junto com sua cobertura.
+- **Segmentos para ATE:** só entram segmentos com **≥ 30 s e ≥ 20 m percorridos (no GT)**; os menores contam
+  como não cobertos. ATE da sequência = **média ponderada pelo nº de poses** dos segmentos elegíveis
+  (RMSE agregado: √(Σ nᵢ·RMSEᵢ² / Σ nᵢ)). Reporta-se também a fração da trajetória coberta por segmentos
+  elegíveis — evita ATE artificialmente baixo por muitos segmentos pequenos alinhados separadamente.
 - Cada etapa falha alto se faltar entrada; logs em `data/runs/.../log.txt`; `run.json` garante
   reprodutibilidade.
 
@@ -147,7 +164,14 @@ erro de registro — o nome evita sugerir mais do que mede.
   entre segmentos), `indicators` (nuvens sintéticas com transformação conhecida), `build_dataset` (schema com
   papel para toda coluna; nenhuma coluna `evaluation`/`target` marcada como `feature`; sem NaN em linhas
   válidas), variância móvel causal (mudar o futuro não altera o valor em k).
-- Smoke test: exemplo de 60 s do RELLIS e trecho do 1018-00 atravessando todo o pipeline.
+- **Preflight de GT do RELLIS:** o bag de exemplo de 60 s garante sensores, mas `poses.txt` é indexado por
+  scan da sequência completa. Antes de qualquer download grande, provar o mapeamento amostra→pose
+  (timestamps do bag vs índices/tempos do `poses.txt` / arquivos de scan). Se não existir mapeamento, o smoke
+  de 60 s vai até o schema **sem métricas de GT**, e o end-to-end completo do RELLIS espera a sequência 00000.
+- Smoke test: exemplo de 60 s do RELLIS (sujeito ao preflight) e trecho do 1018-00 atravessando todo o
+  pipeline.
+- Testes de `extract` para tempo por ponto: unidade/referência sintéticas (scan_start, scan_end, absoluto)
+  → mesma normalização [0, 1].
 - Sanidade: ATE do FAST-LIO no BotanicGarden na ordem do reportado no paper do dataset.
 
 ## 10. Riscos
