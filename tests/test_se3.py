@@ -75,3 +75,31 @@ def test_tum_roundtrip(tmp_path):
     ts2, Ts2 = se3.load_tum(p)
     assert np.all(np.abs(ts2 - ts) < 1000)  # < 1 µs
     np.testing.assert_allclose(Ts2, Ts, atol=1e-6)
+
+
+import pytest
+import warnings
+
+
+@pytest.mark.parametrize("theta", [1e-8, 2e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1.1e-4, 1e-3])
+def test_twist_small_rotations_stable_and_accurate(theta):
+    axis = np.array([0.3, -0.5, 0.8]); axis /= np.linalg.norm(axis)
+    w = theta * axis
+    t = np.array([1.0, -2.0, 0.5])
+    T = se3.to_mat(t, R.from_rotvec(w).as_quat())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        xi = se3.log_twist(T)
+        T2 = se3.exp_twist(xi)
+    assert np.all(np.isfinite(xi))
+    np.testing.assert_allclose(T2, T, atol=1e-12)
+    # referência independente de 1ª ordem: v = t - 0.5 w×t + O(θ²|t|)
+    np.testing.assert_allclose(xi[:3], t - 0.5 * np.cross(w, t), atol=10 * theta**2 * np.linalg.norm(t) + 1e-15)
+    np.testing.assert_allclose(xi[3:], w, atol=1e-15)
+
+
+def test_exp_small_branch_includes_second_order():
+    w = np.array([0, 0, 1e-5]); v = np.array([1.0, 0, 0])
+    T = se3.exp_twist(np.r_[v, w])
+    expected = v + 0.5 * np.cross(w, v) + np.cross(w, np.cross(w, v)) / 6.0
+    np.testing.assert_allclose(T[:3, 3], expected, atol=1e-16)

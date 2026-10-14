@@ -43,25 +43,40 @@ def _hat(w):
     return np.array([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]])
 
 
+# Below this angle the closed forms cancel catastrophically; Taylor series (error O(θ^6)) are used instead.
+_SMALL = 1e-4
+
+
+def _v_coeffs(th):
+    """A, B of V = I + A·W + B·W² (left Jacobian of SO(3))."""
+    if th < _SMALL:
+        t2 = th * th
+        return 0.5 - t2 / 24.0 + t2 * t2 / 720.0, 1.0 / 6.0 - t2 / 120.0 + t2 * t2 / 5040.0
+    s = np.sin(0.5 * th)
+    return 2.0 * s * s / th**2, (th - np.sin(th)) / th**3  # 1-cosθ = 2 sin²(θ/2), sem cancelamento
+
+
+def _v_inv_coeff(th):
+    """C of V⁻¹ = I - W/2 + C·W²."""
+    if th < _SMALL:
+        t2 = th * th
+        return 1.0 / 12.0 + t2 / 720.0 + t2 * t2 / 30240.0
+    h = 0.5 * th
+    return (1.0 - h * np.cos(h) / np.sin(h)) / th**2
+
+
 def log_twist(T):
     w = R.from_matrix(T[:3, :3]).as_rotvec()
-    th = np.linalg.norm(w)
     W = _hat(w)
-    if th < 1e-8:
-        V_inv = np.eye(3) - 0.5 * W + W @ W / 12.0
-    else:
-        V_inv = np.eye(3) - 0.5 * W + (1 - th * np.sin(th) / (2 * (1 - np.cos(th)))) / th**2 * (W @ W)
+    V_inv = np.eye(3) - 0.5 * W + _v_inv_coeff(np.linalg.norm(w)) * (W @ W)
     return np.concatenate([V_inv @ T[:3, 3], w])
 
 
 def exp_twist(xi):
     v, w = np.asarray(xi[:3], float), np.asarray(xi[3:], float)
-    th = np.linalg.norm(w)
     W = _hat(w)
-    if th < 1e-8:
-        V = np.eye(3) + 0.5 * W
-    else:
-        V = np.eye(3) + (1 - np.cos(th)) / th**2 * W + (th - np.sin(th)) / th**3 * (W @ W)
+    A, B = _v_coeffs(np.linalg.norm(w))
+    V = np.eye(3) + A * W + B * (W @ W)
     T = np.eye(4)
     T[:3, :3] = R.from_rotvec(w).as_matrix()
     T[:3, 3] = V @ v
