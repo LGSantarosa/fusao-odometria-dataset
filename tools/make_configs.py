@@ -102,7 +102,7 @@ def build(c, fastlio_template):
     rect = _rectifier(c)
     T_L_vo = np.asarray(c["T_L_cam0"], float) @ rect.T_cam0_rect   # VO = câmera esquerda retificada
     ds = {
-        "name": c["name"], "gt_quality": c["gt_quality"], "max_age_ms": 100, "var_window": 10,
+        "name": c["name"], "gt_quality": c["gt_quality"], "max_age_ms": c.get("max_age_ms", 100), "var_window": 10,
         "image_encoding": "mono8", "topics": c["topics"], "point_time": c["point_time"],
         "kissicp_deskew": c.get("kissicp_deskew", "auto"),
         "T_L_S": {"orbslam3": _flat(T_L_vo), "stella": _flat(T_L_vo),
@@ -193,6 +193,8 @@ def rellis_calib(bag):
                 fastlio={"lidar_type": 3, "scan_line": 64, "timestamp_unit": 3, "blind": 2.0},
                 # Evidência (docs/deskew_rellis.md): com deskew o KISS-ICP diverge do FAST-LIO e das rodas.
                 kissicp_deskew=False,
+                # Nerian a 15 Hz com descartes: intervalos de 66,7/133,3 ms -> idade máxima = 1 período máximo.
+                max_age_ms=140,
                 fastlio_template="ouster64.yaml")
 
 

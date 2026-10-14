@@ -1,7 +1,7 @@
 # Gerado por tools/make_configs.py
 name: rellis
 gt_quality: slam
-max_age_ms: 100
+max_age_ms: 140
 var_window: 10
 image_encoding: mono8
 topics:
