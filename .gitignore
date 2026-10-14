@@ -1,0 +1,4 @@
+data/
+third_party/*/build/
+__pycache__/
+.venv/
