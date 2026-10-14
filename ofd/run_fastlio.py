@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ofd import se3, tracks
+from ofd import config, fastlio_bag, se3, tracks
 from ofd.matching import match_monotonic
 
 ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
@@ -63,16 +63,19 @@ def finalize(attempt_dir, out_dir, end_ns, meta):
             shutil.rmtree(staging)
 
 
-def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=None, duration=None):
+def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration=None):
     out_dir = Path(out_dir)
     attempt = out_dir.with_name(out_dir.name + ".attempts") / time.strftime("%Y%m%dT%H%M%S")
     attempt.mkdir(parents=True, exist_ok=False)
-    if not Path(ros2_bag_dir).exists():
-        inc = " ".join(f"--include-topic {t}" for t in topics)
-        subprocess.run(["bash", "-c", f"env -u PYTHONPATH .venv/bin/rosbags-convert --src {bag1} --dst {ros2_bag_dir} {inc}"], check=True)
+    win = f"_s{start}_d{duration}" if start is not None or duration else ""
+    ros2_bag_dir = Path(bag1).with_name(Path(bag1).stem + f"_fastlio{win}_ros2")
+    if not ros2_bag_dir.exists():   # só LiDAR + IMU, na convenção de tempo do FAST-LIO, já recortado na janela
+        tmp = ros2_bag_dir.with_name(ros2_bag_dir.name + ".tmp")
+        shutil.rmtree(tmp, ignore_errors=True)
+        fastlio_bag.convert(bag1, tmp, ds_cfg.topics["lidar"], ds_cfg.topics["imu"], ds_cfg.point_time, start, duration)
+        os.rename(tmp, ros2_bag_dir)
     cfg_yaml = Path(cfg_yaml).resolve()
     shutil.copy2(cfg_yaml, attempt / "fastlio_config.yaml")   # configuração efetiva desta tentativa
-    extra = (f" --start-offset {start}" if start else "") + (f" --playback-duration {duration}" if duration else "")
     with open(attempt / "log.txt", "w") as log:
         node = subprocess.Popen(["bash", "-c", ROS + f"exec ros2 launch fast_lio mapping.launch.py rviz:=false "
                                  f"config_path:={cfg_yaml.parent} config_file:={cfg_yaml.name}"], stdout=log, stderr=log)
@@ -80,7 +83,7 @@ def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=
                                 f"{attempt / 'raw_odom.tum'} 30"], stdout=log, stderr=log)
         try:
             time.sleep(5)
-            subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}{extra}"],
+            subprocess.run(["bash", "-c", ROS + f"ros2 bag play {ros2_bag_dir} --rate {rate}"],
                            check=True, stdout=log, stderr=log)
             rec.wait(timeout=600)
         finally:
@@ -95,23 +98,23 @@ def run(bag1, ros2_bag_dir, cfg_yaml, seq_dir, out_dir, topics, rate=0.5, start=
     commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
     meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True, "continuous_frame": True,
             "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
-            "start": start, "duration": duration}
+            "start": start, "duration": duration, "ros2_bag": str(ros2_bag_dir),
+            "point_time": ds_cfg.point_time}
     finalize(attempt, out_dir, end_ns, meta)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bag", required=True)
-    ap.add_argument("--ros2-bag", required=True)
+    ap.add_argument("--config", required=True, help="dataset.yaml (tópicos e semântica do tempo por ponto)")
     ap.add_argument("--fastlio-config", required=True)
     ap.add_argument("--seq-dir", required=True, help="extração correspondente (para lidar_stamps.csv)")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--topics", nargs="+", required=True)
     ap.add_argument("--rate", type=float, default=0.5)
     ap.add_argument("--start", type=float)
     ap.add_argument("--duration", type=float)
     a = ap.parse_args()
-    run(a.bag, a.ros2_bag, a.fastlio_config, a.seq_dir, a.out, a.topics, a.rate, a.start, a.duration)
+    run(a.bag, config.load(a.config), a.fastlio_config, a.seq_dir, a.out, a.rate, a.start, a.duration)
 
 
 if __name__ == "__main__":

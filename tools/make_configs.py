@@ -142,7 +142,8 @@ def botanic_calib(calib_dir):
                 T_L_cam0=se3.inv(T_x_vlp) @ T_x_g0, T_c0_c1=T_g0_g1, T_imu_L=T_x_vlp,
                 topics={"left": "/dalsa_gray/left/image_raw", "right": "/dalsa_gray/right/image_raw",
                         "lidar": "/velodyne_points", "imu": "/imu/data", "gt": "/gt_poses"},
-                point_time={"field": "time", "unit": "s", "ref": "scan_start"},
+                # VLP16 do bag: header no FIM do scan, time em s no intervalo [-0.0995, +0.0013] (inspecionado)
+                point_time={"field": "time", "unit": "s", "ref": "scan_end"},
                 fastlio={"lidar_type": 2, "scan_line": 16, "timestamp_unit": 0, "blind": 2.0, "scan_rate": 10},
                 fastlio_template="velodyne.yaml")
 

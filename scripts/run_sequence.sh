@@ -11,9 +11,8 @@ GTA=(); [ -n "$GT" ] && GTA+=(--gt-bag "$GT")
 $PY -m ofd.extract --bag "$BAG" --config $C/dataset.yaml --out $EXT "${WIN[@]}" "${GTA[@]}" > $EXT.extract.json
 $PY -m ofd.run_kissicp --seq-dir $EXT --out $RUNS/kissicp --config $C/dataset.yaml
 $PY -m ofd.lidar_indicators --seq-dir $EXT --run-dir $RUNS/kissicp --config $C/dataset.yaml --method kissicp
-read -r LID IMU < <($PY -c "import yaml;d=yaml.safe_load(open('$C/dataset.yaml'))['topics'];print(d['lidar'],d['imu'])")
-$PY -m ofd.run_fastlio --bag "$BAG" --ros2-bag "${BAG%.bag}_ros2" --fastlio-config $C/fastlio.yaml \
-  --seq-dir $EXT --out $RUNS/fastlio --topics "$LID" "$IMU" "${WIN[@]}"
+$PY -m ofd.run_fastlio --bag "$BAG" --config $C/dataset.yaml --fastlio-config $C/fastlio.yaml \
+  --seq-dir $EXT --out $RUNS/fastlio "${WIN[@]}"
 $PY -m ofd.lidar_indicators --seq-dir $EXT --run-dir $RUNS/fastlio --config $C/dataset.yaml --method fastlio
 $PY -m ofd.run_vo --method orbslam3 --seq-dir $EXT --settings $C/orbslam3.yaml --out $RUNS/orbslam3 --rate 1.0
 $PY -m ofd.run_vo --method stella --seq-dir $EXT --settings $C/stella.yaml --out $RUNS/stella --rate 1.0
