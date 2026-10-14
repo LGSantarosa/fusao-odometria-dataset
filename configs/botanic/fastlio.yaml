@@ -1,0 +1,52 @@
+# Gerado por tools/make_configs.py
+/**:
+  ros__parameters:
+    feature_extract_enable: false
+    point_filter_num: 4
+    max_iteration: 3
+    filter_size_surf: 0.5
+    filter_size_map: 0.5
+    cube_side_length: 1000.0
+    runtime_pos_log_enable: false
+    map_file_path: ./test.pcd
+    common:
+      lid_topic: /velodyne_points
+      imu_topic: /imu/data
+      time_sync_en: false
+      time_offset_lidar_to_imu: 0.0
+    preprocess:
+      lidar_type: 2
+      scan_line: 16
+      scan_rate: 10
+      timestamp_unit: 0
+      blind: 2.0
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 360.0
+      det_range: 100.0
+      extrinsic_est_en: false
+      extrinsic_T:
+      - 0.0584867781527745
+      - 0.00840419966766332
+      - 0.168915521980526
+      extrinsic_R:
+      - 0.999678872580465
+      - 0.0252865664429322
+      - 0.00150422292234868
+      - -0.0252723438960774
+      - 0.999649431893338
+      - -0.0078025434141585
+      - -0.0017010392940554
+      - 0.00776298237926191
+      - 0.99996789371916
+    publish:
+      path_en: false
+      scan_publish_en: true
+      dense_publish_en: true
+      scan_bodyframe_pub_en: true
+    pcd_save:
+      pcd_save_en: false
+      interval: -1
