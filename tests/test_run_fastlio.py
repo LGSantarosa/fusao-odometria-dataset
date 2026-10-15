@@ -76,3 +76,11 @@ def test_match_fraction_only_over_scans_with_imu_coverage():
     assert abs(info["matched_frac"] - 57 / 60) < 1e-12
     assert abs(info["matched_frac_all"] - 57 / 100) < 1e-12
     assert info["n_scans_without_imu"] == 40
+
+
+def test_pose_outside_imu_coverage_is_not_ok():
+    end = np.arange(10) * 100 * MS
+    raw = end + 1 * MS                                               # pose para todos, inclusive antes da IMU
+    ts, Ts, st, info = run_fastlio.assemble(raw, poses(10), end, imu_window=(int(end[3]), int(end[9])))
+    assert st["ok"].tolist() == [0, 0, 0] + [1] * 7
+    assert ts.tolist() == end[3:].tolist() and np.allclose(Ts[:, 0, 3], np.arange(3, 10))

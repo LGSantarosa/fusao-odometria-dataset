@@ -30,7 +30,7 @@ def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9, imu_window=None)
         near = [int(raw_ts[np.argmin(np.abs(raw_ts - e))] - e) for e in end_ns] if len(raw_ts) else [0]
         raise RuntimeError(f"só {frac:.1%} dos scans casaram com poses; mediana(pose - scan) = "
                            f"{np.median(near) / 1e6:.1f} ms — conferir timestamp_unit/end_ns")
-    ok = (m >= 0).astype(int)
+    ok = ((m >= 0) & cov).astype(int)
     state = pd.DataFrame({"ts_ns": end_ns, "ok": ok, "map_id": 0})
     return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "matched_frac_all": frac_all,
                                                          "n_scans_without_imu": int((~cov).sum()), "tol_ms": tol_ms}

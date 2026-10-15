@@ -187,6 +187,8 @@ def rellis_calib(bag):
     T_s_imu, T_s_lidar = tf[("ouster1/os1_sensor", "ouster1/os1_imu")], tf[("ouster1/os1_sensor", "ouster1/os1_lidar")]
     K0, D0, size = _camera_info(bag, "/nerian/left/camera_info")
     K1, D1, _ = _camera_info(bag, "/nerian/right/camera_info")
+    # fps = taxa ENTREGUE, não a nominal (15 Hz): com os descartes chegam ~10,9 pares/s (exemplo: 648 em 59,7 s).
+    # O ORB-SLAM3 usa fps como nº de frames (mMaxFrames ≈ 1 s entre keyframes); o Stella decide por tempo (max_interval).
     return dict(name="rellis", gt_quality="slam", size=size, fps=10, K0=K0, D0=D0, K1=K1, D1=D1,
                 T_L_cam0=se3.inv(T_b_lidar) @ T_b_left, T_c0_c1=se3.inv(T_b_left) @ T_b_right,
                 T_imu_L=se3.inv(T_s_imu) @ T_s_lidar,

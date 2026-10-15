@@ -7,17 +7,18 @@ ROOT=$PWD
 TP=$(realpath -m "${1:-third_party}")
 mkdir -p "$TP" && cd "$TP"
 J=${J:-6}
+source "$ROOT/scripts/lib_pin.sh"
 
-[ -d Pangolin ] || { git clone -q https://github.com/stevenlovegrove/Pangolin.git && git -C Pangolin checkout -q 7364b59a58045d1c429b146e44f6f088fd1cc518; }
+pin_clone Pangolin https://github.com/stevenlovegrove/Pangolin.git 7364b59a58045d1c429b146e44f6f088fd1cc518
+verify_pin Pangolin 7364b59a58045d1c429b146e44f6f088fd1cc518
 cmake -S Pangolin -B Pangolin/build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF \
   -DBUILD_TOOLS=OFF -DBUILD_PANGOLIN_PYTHON=OFF -DCMAKE_INSTALL_PREFIX="$TP/local" >/dev/null
 cmake --build Pangolin/build -j"$J" --target install >/dev/null
 
-[ -d ORB_SLAM3 ] || { git clone -q https://github.com/UZ-SLAMLab/ORB_SLAM3.git && git -C ORB_SLAM3 checkout -q 4452a3c4ab75; }
+pin_clone ORB_SLAM3 https://github.com/UZ-SLAMLab/ORB_SLAM3.git 4452a3c4ab75
+apply_patches ORB_SLAM3 "$ROOT"/patches/orbslam3/*.patch
+verify_pin ORB_SLAM3 4452a3c4ab75 "$ROOT"/patches/orbslam3/*.patch
 cd ORB_SLAM3
-for p in "$ROOT"/patches/orbslam3/*.patch; do   # idempotente: aplica se ainda não aplicado
-  if git apply --check "$p" 2>/dev/null; then git apply "$p"; else git apply --check -R "$p"; fi
-done
 for d in DBoW2 g2o Sophus; do
   (cd Thirdparty/$d && cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF >/dev/null && cmake --build build -j"$J" >/dev/null)
 done

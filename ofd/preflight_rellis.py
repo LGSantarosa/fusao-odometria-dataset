@@ -8,14 +8,16 @@ from rosbags.highlevel import AnyReader
 from ofd.matching import match_monotonic
 
 
-def bag_scan_stamps(bag, topic="/os1_cloud_node/points"):
+def bag_scan_stamps(bag, topic="/os1_cloud_node/points", sort=True):
+    """Stamps dos headers dos scans; sort=False mantém a ordem de gravação do bag (associação por índice)."""
     with AnyReader([Path(bag)]) as r:
         conns = [c for c in r.connections if c.topic == topic]
         out = []
         for c, _, raw in r.messages(connections=conns):
             h = r.deserialize(raw, c.msgtype).header.stamp
             out.append(h.sec * 1_000_000_000 + h.nanosec)
-    return np.sort(np.array(out, dtype=np.int64))
+    out = np.array(out, dtype=np.int64)
+    return np.sort(out) if sort else out
 
 
 def main():

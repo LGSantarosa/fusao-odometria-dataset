@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Pipeline completo de uma sequência.
-# uso: scripts/run_sequence.sh <dataset: botanic|rellis> <seq_name> <bag> [start_s duration_s] [gt_bag]
+# uso: scripts/run_sequence.sh <dataset: botanic|rellis> <seq_name> <bag> [start_s duration_s] [gt]
+#   gt: bag com o GT, ou um .tum já no frame do LiDAR (RELLIS: gerar com python -m ofd.rellis_gt)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DS=$1; SEQ=$2; BAG=$3; START=${4:-}; DUR=${5:-}; GT=${6:-}
 PY="env -u PYTHONPATH .venv/bin/python"; C=configs/$DS
 EXT=data/extracted/$SEQ; RUNS=data/runs/$SEQ
 WIN=(); [ -n "$START" ] && WIN+=(--start "$START" --duration "$DUR")
-GTA=(); [ -n "$GT" ] && GTA+=(--gt-bag "$GT")
+GTA=(); case "$GT" in "") ;; *.tum) GTA+=(--gt-tum "$GT") ;; *) GTA+=(--gt-bag "$GT") ;; esac
+mkdir -p "$(dirname "$EXT")" "$RUNS"
 $PY -m ofd.extract --bag "$BAG" --config $C/dataset.yaml --out $EXT "${WIN[@]}" "${GTA[@]}" > $EXT.extract.json
 $PY -m ofd.run_kissicp --seq-dir $EXT --out $RUNS/kissicp --config $C/dataset.yaml
 $PY -m ofd.lidar_indicators --seq-dir $EXT --run-dir $RUNS/kissicp --config $C/dataset.yaml --method kissicp
