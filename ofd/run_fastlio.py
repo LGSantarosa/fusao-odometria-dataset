@@ -106,7 +106,8 @@ def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration
     end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
     commit = Path("third_party_fastlio_commit.txt").read_text().strip() if Path("third_party_fastlio_commit.txt").exists() else "unknown"
     meta = {"method": "fastlio", "uses_imu": True, "sensor_frame": "imu", "deskew": True, "continuous_frame": True,
-            "fastlio_commit": commit, "config": cfg_yaml.read_text(), "rate": rate,
+            "fastlio_commit": commit, "fastlio_patches": sorted(p.name for p in Path("patches/fastlio").glob("*.patch")),
+            "config": cfg_yaml.read_text(), "rate": rate,
             "start": start, "duration": duration, "ros2_bag": str(ros2_bag_dir),
             "point_time": ds_cfg.point_time}
     finalize(attempt, out_dir, end_ns, meta, imu_window(ros2_bag_dir, ds_cfg.topics["imu"]))
