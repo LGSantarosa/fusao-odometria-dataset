@@ -35,12 +35,17 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 140 testes
 - Saídas: `data/output/*.parquet|csv`, `schema.json`, `metrics.csv`; análise da associação em `data/analysis/rellis_assoc/`.
 
 ## Próximos passos
-1. Executar a etapa de repetibilidade do protocolo KISS-ICP (3 execuções por condição/sequência), sem agregar métricas;
-   aplicar a regra determinístico/equivalente/10 execuções antes de abrir os resultados.
-2. Só depois da decisão H4, executar `ofd.kissicp_analysis` e documentar Q1/Q2 em `docs/RESULTS_kissicp.md` e no relato.
+1. Fase 1 do KISS-ICP concluída (`docs/RESULTS_kissicp.md`, commit `8564ca1`): 60 execuções, determinístico em
+   todas as condições, H4 rejeitada pelo critério operacional; D4′ acionado pela regra. Fase 2 formalmente liberada
+   pelo revisor em 2026-10-15 e ainda não iniciada (nenhuma métrica de erro aberta).
+2. Fase 2: com a repetição 1 de cada condição (`kissicp_<C>_r1`; r2/r3 não são amostras nem servem para selecionar),
+   abrir as métricas pareadas no suporte comum de GT (`ofd.kissicp_analysis`), aplicar literalmente os critérios de
+   promoção a D1–D3, usar D4/D4′ só para atribuição diagnóstica, manter o RELLIS exploratório e registrar resultados
+   negativos e causas não identificadas sem reinterpretar critérios; documentar Q1/Q2 em `docs/RESULTS_kissicp.md`
+   e no relato.
 3. Repetir as VOs nas sequências completas (variabilidade entre execuções).
 4. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
-5. Push do branch quando os pipelines estiverem consolidados (commits locais à frente do remoto).
+5. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
