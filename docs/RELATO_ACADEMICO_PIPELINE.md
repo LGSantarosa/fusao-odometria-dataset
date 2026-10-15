@@ -248,6 +248,68 @@ A causa física do comportamento ainda não foi demonstrada. A hipótese de que 
 drivers permanece não verificada e não deve ser apresentada como conclusão. Até que a causa seja identificada, o
 *deskew* permanece desativado nos dois datasets porque essa decisão é sustentada pelas métricas observadas.
 
+### 3.5 Associação entre o GT do RELLIS-3D e as varreduras da sequência 00000
+
+**Objetivo.** Determinar se as 2.847 poses de `poses.txt`, que não possuem timestamps, podem ser associadas de forma
+única às varreduras Ouster gravadas no arquivo da sequência 00000, condição necessária para utilizá-las como GT.
+
+**Hipótese.** O protocolo preliminar previa associação por ordem, com a k-ésima pose correspondendo à k-ésima varredura.
+O arquivo, contudo, contém 2.849 varreduras. Formulou-se a hipótese de que exatamente duas varreduras não possuem pose e
+de que sua posição poderia ser identificada comparando o movimento descrito por `poses.txt` com sensores independentes.
+
+**Procedimento.** Os critérios de aceitação foram fixados antes da análise: concordância entre odometria de rodas, IMU e
+FAST-LIO2 quanto ao par de varreduras não associadas, com tolerância de uma varredura; estabilidade em reamostragem por
+blocos; diferença no Critério de Informação Bayesiano (ΔBIC) superior a 10 em relação ao segundo candidato; e ausência de
+mudança sistemática de fase. Odometria de rodas e duas IMUs (Microstrain e VectorNav) foram tratadas como evidências
+primárias; o FAST-LIO2 foi empregado apenas como confirmação, para evitar circularidade entre a escolha da associação e a
+avaliação posterior do método. Foram avaliados exaustivamente todos os 4.056.976 pares monotônicos de varreduras não
+associadas, incluindo início, fim e interior da sequência. Para cada par, o incremento de pose entre poses consecutivas
+foi comparado ao sinal do sensor integrado entre as varreduras associadas, e o custo foi definido como a soma dos
+quadrados dos resíduos normalizados. Como todos os candidatos possuem o mesmo número de parâmetros, o ΔBIC equivale à
+diferença de custo. O procedimento foi validado previamente com dados sintéticos de descartes conhecidos.
+
+**Resultados.** Os timestamps das 2.849 varreduras não apresentaram lacunas, duplicatas ou inversões, com intervalos entre
+99,3 ms e 100,9 ms. As poses indicam que o veículo permaneceu praticamente parado no início (até a pose 95) e no fim da
+sequência. As três evidências primárias indicaram que nenhuma varredura deixa de ser associada durante o movimento, mas
+não identificaram o par: os conjuntos com ΔBIC < 10 contêm de 5.778 a 6.903 pares, todos com as duas varreduras não
+associadas no trecho inicial parado, e a margem para o segundo candidato variou de 0,004 a 0,85. As IMUs favoreceram o
+deslocamento global de duas varreduras somente sob a suposição de latência nula entre seus timestamps e os da nuvem;
+com latência livre, os deslocamentos de zero, uma e duas varreduras tornaram-se equivalentes (ΔBIC ≤ 6,3), com a
+latência estimada variando em aproximadamente 100 ms por varredura deslocada. O FAST-LIO2, comparado por índice de
+varredura e, portanto, independente de relógio, favoreceu o deslocamento de uma varredura, com uma varredura não
+associada no início e outra no fim (ΔBIC de 131.887 contra o deslocamento de duas varreduras). A reamostragem por blocos
+não reproduziu um par estável em nenhuma das evidências.
+
+| Evidência | Par de melhor ajuste | Deslocamento durante o movimento | Margem para o 2º candidato (ΔBIC) |
+|---|---|---:|---:|
+| Odometria de rodas | (115, 116) | 2 | 0,85 |
+| IMU Microstrain | (16, 27) | 2 | 0,01 |
+| IMU VectorNav | (15, 16) | 2 | 0,004 |
+| FAST-LIO2 (confirmação) | (9, 2738) | 1 | 0,46 |
+
+Fonte: Elaborada pelo autor (2026).
+
+**Discussão.** O resultado negativo decorre de duas limitações distintas. A primeira é a falta de identificabilidade dos
+descartes dentro dos trechos em que o veículo está parado, pois qualquer posição nesses trechos produz o mesmo movimento
+relativo. A segunda é a confusão entre o deslocamento global da associação e a latência dos sensores temporizados: um
+deslocamento de uma varredura equivale a um atraso aparente de cerca de 100 ms. As evidências seriam compatíveis entre si
+caso os timestamps das IMUs estivessem atrasados em aproximadamente 100 ms em relação ao timestamp da nuvem; essa
+explicação, porém, foi formulada após a observação dos resultados e não foi testada.
+
+**Ameaças à validade.** As métricas de classe e o teste de degenerescência entre deslocamento e latência foram
+acrescentados após os primeiros resultados e têm caráter exploratório. Uma versão inicial do custo atribuía custo nulo a
+intervalos sem dados do sensor, o que tornava os candidatos incomparáveis; o defeito foi corrigido antes dos resultados
+reportados. A origem do `poses.txt` não é declarada e pode ser correlacionada a métodos LiDAR, o que afeta a
+interpretação de métricas, mas não a comparação por índice.
+
+**Decisão.** Os critérios de concordância, estabilidade e margem não foram atendidos. Manteve-se o veredito C: a sequência
+RELLIS-3D 00000 permanece como dado não rotulado, destinado apenas à avaliação exploratória, e o GT por índice continua
+bloqueado no pipeline. Uma eventual reabertura exigiria novo protocolo com evidência independente de relógio e de
+odometria, como o registro direto das nuvens brutas com as poses de `poses.txt`.
+
+**Rastreabilidade.** `docs/preflight_rellis.md` (seção de 15/10/2026), `tools/rellis_assoc.py`,
+`tests/test_rellis_assoc.py` e `data/analysis/rellis_assoc/result.json`.
+
 ## 4. Ameaças à validade
 
 ### 4.1 Validade do construto
@@ -275,7 +337,8 @@ sequências BotanicGarden 1018-13 e RELLIS-3D 00000 amplia a diversidade, mas ai
 O FAST-LIO2 foi repetido três vezes em cada experimento após a correção de QoS, produzindo resultados idênticos. Os demais
 métodos ainda não passaram pelo mesmo número de repetições em todas as sequências. O GT do RELLIS-3D não possui origem
 metrológica explicitada e pode ser correlacionado a métodos LiDAR; por isso, a avaliação principal permanece no
-BotanicGarden. Resultados de sequências em processamento não são incorporados até que os contratos e as métricas sejam
+BotanicGarden. Na sequência 00000, além disso, a associação entre poses e varreduras não pôde ser estabelecida de forma
+única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são incorporados até que os contratos e as métricas sejam
 verificados.
 
 ## 5. Implicações para o modelo de fusão
@@ -294,13 +357,11 @@ com cada fonte isolada e com estratégias de pesos fixos, conforme as hipóteses
 ## 6. Próximos experimentos
 
 1. Concluir o processamento do BotanicGarden 1018-13 e verificar contrato, cobertura, ATE e RPE.
-2. Confirmar que o RELLIS-3D 00000 possui 2.847 varreduras Ouster para as 2.847 linhas de `poses.txt`, preservando ordem
-   e ausência de lacunas superiores a 150 ms.
-3. Comparar os timestamps do GT associado por índice com as poses do FAST-LIO2 para verificar se a referência temporal
-   corresponde ao início da varredura.
-4. Investigar a causa física da degradação do KISS-ICP com *deskew*, sem alterar a decisão experimental já sustentada
+2. Decidir se a associação do RELLIS-3D 00000 será reaberta com novo protocolo independente de relógio e de odometria
+   (seção 3.5); até lá, a sequência permanece sem GT.
+3. Investigar a causa física da degradação do KISS-ICP com *deskew*, sem alterar a decisão experimental já sustentada
    pelos resultados.
-5. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
+4. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
    \(\mathfrak{se}(3)\), ou ambas em estudo de ablação.
 
 ## Referências
@@ -331,6 +392,7 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
 
 - Resultados numéricos e condições dos experimentos: `docs/RESULTS_smoke.md`.
 - Investigação do *deskew*: `docs/deskew_rellis.md`.
-- Associação preliminar do GT do RELLIS-3D: `docs/preflight_rellis.md`.
+- Associação do GT do RELLIS-3D (preliminar e sequência 00000): `docs/preflight_rellis.md`, `tools/rellis_assoc.py`,
+  `data/analysis/rellis_assoc/result.json`.
 - Contrato de dados, decisões e riscos: `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md`.
 - Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`.
