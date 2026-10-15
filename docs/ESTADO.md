@@ -1,6 +1,6 @@
 # Estado do projeto — 2026-10-15
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 131 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 140 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -21,6 +21,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 131 testes
   sem ATE/RPE contra `poses.txt`; `ofd.rellis_gt` continua recusando (`docs/preflight_rellis.md`).
 - FAST-LIO: casamento pose ↔ scan com tolerância de 20 ms (`--tol-ms`; desvio registrado no `run.json`); `--reassemble`
   remonta do `raw_odom.tum` sem reexecutar.
+- Investigação do KISS-ICP pré-registrada antes de novas execuções (`docs/protocol_kissicp.md`, commit `c1b0b06`).
+  Condições D0–D4′, métricas e regra de repetibilidade foram implementadas e validadas somente com dados sintéticos;
+  nenhum resultado real novo foi consultado. D3 usa rotação horária, documentada pelos fabricantes, tanto no VLP-16
+  quanto no OS1-64. A API do KISS-ICP 1.3.0 não expõe as correspondências do registro; H3 usa o fallback pré-fixado
+  de ocupação/PCA, além dos indicadores uniformes já existentes.
 
 ## Dados locais (fora do git, em `data/`)
 - `data/raw/botanic/1018_00_VLIO.bag` (md5 ok), `GT_pose_qnew/`, `calib_params/`.
@@ -30,10 +35,12 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 131 testes
 - Saídas: `data/output/*.parquet|csv`, `schema.json`, `metrics.csv`; análise da associação em `data/analysis/rellis_assoc/`.
 
 ## Próximos passos
-1. Investigar o ATE do KISS-ICP no 1018-13 (1,83 m vs. 0,13 m no 1018-00) e por que o deskew piora o KISS-ICP.
-2. Repetir VOs e KISS-ICP nas sequências completas (variabilidade entre execuções).
-3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
-4. Push do branch quando os pipelines estiverem consolidados (commits locais à frente do remoto).
+1. Executar a etapa de repetibilidade do protocolo KISS-ICP (3 execuções por condição/sequência), sem agregar métricas;
+   aplicar a regra determinístico/equivalente/10 execuções antes de abrir os resultados.
+2. Só depois da decisão H4, executar `ofd.kissicp_analysis` e documentar Q1/Q2 em `docs/RESULTS_kissicp.md` e no relato.
+3. Repetir as VOs nas sequências completas (variabilidade entre execuções).
+4. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
+5. Push do branch quando os pipelines estiverem consolidados (commits locais à frente do remoto).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.

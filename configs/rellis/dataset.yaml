@@ -15,6 +15,7 @@ point_time:
   unit: ns
   ref: scan_start
 kissicp_deskew: false
+lidar_rotation_direction: clockwise
 T_L_S:
   orbslam3:
   - 0.04573054059484218

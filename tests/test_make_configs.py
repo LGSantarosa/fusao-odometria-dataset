@@ -35,6 +35,7 @@ def calib():
                 T_L_cam0=T_L_cam0, T_c0_c1=T_c0_c1, T_imu_L=T_imu_L,
                 topics={"left": "/l", "right": "/r", "lidar": "/p", "imu": "/i", "gt": "/g"},
                 point_time={"field": "time", "unit": "s", "ref": "scan_start"},
+                lidar_rotation_direction="clockwise",
                 fastlio={"lidar_type": 2, "scan_line": 16, "timestamp_unit": 0, "blind": 2.0})
 
 
@@ -52,6 +53,7 @@ def test_build_files_consistent(tmp_path):
     np.testing.assert_allclose(cfg.T_L_S["fastlio"], se3.inv(c["T_imu_L"]), atol=1e-9)   # IMU -> LiDAR
     np.testing.assert_allclose(cfg.T_L_S["kissicp"], np.eye(4))
     assert cfg.stereo is not None
+    assert cfg.lidar_rotation_direction == "clockwise"
     orb = files["orbslam3.yaml"]
     assert 'Camera.type: "Rectified"' in orb and "loopClosing: 0" in orb
     assert f"Stereo.b: {rect.baseline:.9f}" in orb

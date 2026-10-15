@@ -105,6 +105,7 @@ def build(c, fastlio_template):
         "name": c["name"], "gt_quality": c["gt_quality"], "max_age_ms": c.get("max_age_ms", 100), "var_window": 10,
         "image_encoding": "mono8", "topics": c["topics"], "point_time": c["point_time"],
         "kissicp_deskew": c.get("kissicp_deskew", "auto"),
+        "lidar_rotation_direction": c.get("lidar_rotation_direction"),
         "T_L_S": {"orbslam3": _flat(T_L_vo), "stella": _flat(T_L_vo),
                   "fastlio": _flat(se3.inv(np.asarray(c["T_imu_L"], float))), "kissicp": EYE},
         "stereo": {"K0": np.asarray(c["K0"], float).tolist(), "D0": _flat(c["D0"]),
@@ -144,6 +145,8 @@ def botanic_calib(calib_dir):
                         "lidar": "/velodyne_points", "imu": "/imu/data", "gt": "/gt_poses"},
                 # VLP16 do bag: header no FIM do scan, time em s no intervalo [-0.0995, +0.0013] (inspecionado)
                 point_time={"field": "time", "unit": "s", "ref": "scan_end"},
+                # Manual VLP-16 rev. F, Fig. 9-1 e §9.3.5: azimute cresce no sentido horário visto de cima.
+                lidar_rotation_direction="clockwise",
                 fastlio={"lidar_type": 2, "scan_line": 16, "timestamp_unit": 0, "blind": 2.0, "scan_rate": 10},
                 # GT (docs/deskew_rellis.md): com deskew o RPE/frame do KISS-ICP piora (4,09 vs 2,45 cm).
                 kissicp_deskew=False,
@@ -195,6 +198,8 @@ def rellis_calib(bag):
                 topics={"left": "/nerian/left/image_raw", "right": "/nerian/right/image_raw",
                         "lidar": "/os1_cloud_node/points", "imu": "/os1_cloud_node/imu", "gt": "/gt_poses"},
                 point_time={"field": "t", "unit": "ns", "ref": "scan_start"},
+                # Ouster Sensor Docs: rotação horária vista de cima (velocidade negativa em Z).
+                lidar_rotation_direction="clockwise",
                 fastlio={"lidar_type": 3, "scan_line": 64, "timestamp_unit": 3, "blind": 2.0},
                 # Evidência (docs/deskew_rellis.md): com deskew o KISS-ICP diverge do FAST-LIO e das rodas.
                 kissicp_deskew=False,

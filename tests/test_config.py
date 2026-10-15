@@ -12,6 +12,7 @@ def test_load(tmp_path):
     p = tmp_path / "c.yaml"; p.write_text(yaml.safe_dump(d))
     c = config.load(p)
     assert c.T_L_S["fastlio"].shape == (4, 4) and c.point_time["unit"] == "s"
+    assert c.lidar_rotation_direction is None
 
 
 def test_rejects_non_se3(tmp_path):

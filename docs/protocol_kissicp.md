@@ -134,3 +134,42 @@ As condições D1–D4 e as métricas das seções 6 e 7 serão implementadas co
 script de análise, validadas em dados sintéticos com distorção e tempos conhecidos antes de qualquer execução sobre os
 dados reais. Os resultados entram em `docs/RESULTS_kissicp.md` (registro operacional) e no relato acadêmico, com a
 distinção entre evidência anterior, componente prospectivo e análise exploratória.
+
+## 10. Registro de implementação — 15/10/2026 (após o registro, antes das execuções reais)
+
+Esta seção registra decisões previstas pela seção 9; não altera hipóteses, métricas ou critérios. A implementação foi
+iniciada sem executar D1–D4 sobre as sequências reais e sem consultar novos resultados do KISS-ICP.
+
+**Sentido de rotação usado por D3.** Ambos os sensores giram no sentido horário quando vistos de cima:
+
+- VLP-16: o manual do fabricante, revisão F, Figura 9-1, define o azimute crescente no sentido horário; a seção 9.3.5
+  confirma que os azimutes crescem com a ordem temporal dos disparos. Fonte:
+  <https://data.ouster.io/downloads/velodyne/user-manual/vlp-16-user-manual-revf.pdf>.
+- OS1-64: a documentação oficial declara explicitamente rotação horária vista de cima, equivalente a velocidade
+  angular negativa sobre Z. Fonte:
+  <https://static.ouster.dev/sensor-docs/image_route1/image_route3/sensor_data/sensor-data.html>.
+
+O valor `clockwise` fica versionado em `configs/{botanic,rellis}/dataset.yaml` e é gerado por
+`tools/make_configs.py`; D3/D4′ recusam execução sem um sentido válido.
+
+**Semântica temporal de D4.** O instante de cada ponto é reconstruído como
+`header + t_min + t_norm × span`, usando `scans.csv`. Isso preserva o caso do VLP-16, em que o header está próximo do
+fim do scan e os tempos relativos são predominantemente negativos. A transformação aplicada é
+`p_L(fim) = inv(T_W_L(fim)) T_W_L(t) p_L(t)`. Se o GT não envolver o scan inteiro, o scan fica sem compensação e é
+contado separadamente, conforme o protocolo.
+
+**Arquivos e validação sintética.** As condições puras estão em `ofd/kissicp_conditions.py`; o runner registra condição,
+tipo de compensação, sentido de rotação, diagnóstico `t` × `t_geo` e scans externos compensados/não compensados. As
+métricas pareadas, repetibilidade, regimes de movimento e fallback de estrutura por PCA estão em
+`ofd/kissicp_analysis.py`. Os testes sintéticos cobrem sentido temporal, tempos negativos relativos ao header,
+distorção SE(3) conhecida, D0–D4′, pares comuns de GT, promoção e medidas de estrutura.
+
+O executor recebe `--condition D0|D1|D2|D3|D4|D4prime`; o sentido de rotação vem do `dataset.yaml`, podendo ser
+sobrescrito explicitamente por `--rotation-direction`. Depois que as repetições forem liberadas pelo protocolo, a
+análise é executada sem chamar o estimador, por exemplo:
+
+```bash
+python -m ofd.kissicp_analysis --seq-dir data/extracted/<seq> \
+  --run D0=data/runs/<seq>/kissicp_D0 --run D1=data/runs/<seq>/kissicp_D1 \
+  --repetitions D0=<rep1>,<rep2>,<rep3> --out data/analysis/kissicp/<seq>
+```
