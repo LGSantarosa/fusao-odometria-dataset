@@ -2,6 +2,8 @@
 
 Saídas: `data/output/{1018-00,rellis_example}.parquet|csv`, `data/output/schema.json`, `data/output/metrics.csv`.
 Teste de contrato sobre a saída real (`tests/test_pipeline_contract.py`): passa. Unidades: m, rad→graus.
+`eligible_frac` = comprimento (m) dos segmentos contínuos elegíveis para o ATE (≥ 30 s e ≥ 20 m) / comprimento total
+do caminho do GT na sequência, limitado a 1 (`ofd/evaluate.py:131`); não é fração de passos nem de RPE.
 
 | seq | method | uses_imu | ate_rmse | rpe_t_frame | rpe_r_frame | rpe_t_10m | rpe_r_10m | coverage | n_failures | n_resets | longest_s | longest_m | eligible_frac |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|

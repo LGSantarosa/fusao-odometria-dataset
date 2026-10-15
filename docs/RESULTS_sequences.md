@@ -2,9 +2,10 @@
 
 Saídas: `data/output/{1018-13,00000}.parquet|csv`, `data/output/metrics.csv`, `data/output/schema.json`.
 Teste de contrato sobre a saída real (`tests/test_pipeline_contract.py`, `max_age_ms` por dataset): passa nas quatro
-sequências (1018-00, 1018-13, rellis_example, 00000). Código: commit `2c730a2` + FAST-LIO com
-`patches/fastlio/0000-reliable-pointcloud-qos.patch`; casamento pose ↔ scan do FAST-LIO com tolerância de 20 ms (ver
-abaixo), remontado do `raw_odom.tum` sem reexecutar o FAST-LIO. Unidades: m, rad→graus. Todos os processos encerrados sem nós órfãos.
+sequências (1018-00, 1018-13, rellis_example, 00000). Código: pipeline em `2c730a2`; tolerância de 20 ms do casamento
+pose ↔ scan do FAST-LIO em `f0b7ea7` (correções de documentação e da CLI `--reassemble` no commit seguinte); FAST-LIO
+com `patches/fastlio/0000-reliable-pointcloud-qos.patch`; saídas do FAST-LIO remontadas do `raw_odom.tum` sem
+reexecutá-lo. Unidades: m, rad→graus. Todos os processos encerrados sem nós órfãos.
 
 Comandos:
 ```
@@ -25,7 +26,8 @@ scripts/run_sequence.sh rellis 00000 data/raw/rellis/00000/20200213_trail_2.bag 
 | 00000 | kissicp | False | — | — | — | — | — | 100.0% | 0 | 0 | 284.792 | — | — |
 
 Denominadores: `coverage` = passos válidos / passos da grade (scans LiDAR: 2071 no 1018-13, 2849 no 00000);
-`eligible_frac` = fração dos passos com GT elegível para RPE.
+`eligible_frac` = comprimento (m) dos segmentos contínuos elegíveis para o ATE (≥ 30 s e ≥ 20 m) / comprimento total
+do caminho do GT na sequência, limitado a 1 (`ofd/evaluate.py:131`); não é fração de passos nem de RPE.
 
 ## BotanicGarden 1018-13 (GT do scanner Leica, `gt_quality: survey`) — confirmatório
 - 208,8 s; 2071 scans VLP-16; 1600 pares estéreo (câmeras cobrem ~160 s); 1938 poses de GT, 1936 passos com GT.
@@ -58,8 +60,25 @@ Denominadores: `coverage` = passos válidos / passos da grade (scans LiDAR: 2071
   sobra após o pré-processamento (distância mínima, subamostragem; `laserMapping.cpp:406`); `end_ns` é o último ponto
   válido da nuvem inteira. São dois conceitos de "fim da varredura"; todos os desvios observados são ≤ 0.
 - Correção: `ofd/run_fastlio.py` — `--tol-ms` (padrão 20 ms) e `--reassemble` (remonta do `raw_odom.tum` registrado).
-  Justificativa: maior desvio 7,02 ms; poses a ≥ 96,05 ms; casamento monotônico um-para-um; 2 × 20 ms < 96 ms, logo as
-  janelas de scans vizinhos não se sobrepõem. A tolerância não foi escolhida pelo ATE (que não mudou).
+  Justificativa: as janelas de ±20 ms ficam centradas no `end_ns` de cada scan, e o menor intervalo entre scans
+  consecutivos é 100,828 ms (1018-00), 98,339 ms (1018-13), 99,587 ms (rellis_example) e 99,282 ms (00000); como
+  2 × 20 ms = 40 ms é menor que todos, as janelas de scans vizinhos não se sobrepõem. O maior desvio observado foi
+  7,02 ms, e o casamento é monotônico e um-para-um. O menor intervalo entre poses (≥ 96,05 ms, tabela abaixo) é só uma
+  verificação adicional de unicidade. A tolerância não foi escolhida pelo ATE (que não mudou).
+- Remontagem reprodutível (por sequência; `--reassemble` deixa `indicators.csv` como esboço, por isso as 3 etapas
+  seguintes são obrigatórias):
+  ```
+  python -m ofd.run_fastlio --reassemble --tol-ms 20 --config configs/<ds>/dataset.yaml \
+    --seq-dir data/extracted/<seq> --out data/runs/<seq>/fastlio
+  python -m ofd.lidar_indicators --seq-dir data/extracted/<seq> --run-dir data/runs/<seq>/fastlio \
+    --config configs/<ds>/dataset.yaml --method fastlio
+  python -m ofd.build_dataset --seq-dir data/extracted/<seq> --runs-dir data/runs/<seq> \
+    --config configs/<ds>/dataset.yaml --out data/output
+  python -m ofd.evaluate --seq-dir data/extracted/<seq> --runs-dir data/runs/<seq> \
+    --table data/output/<seq>.parquet --config configs/<ds>/dataset.yaml
+  ```
+  Repetida no 1018-13 com a CLI corrigida: 1816 scans com pose, tabela igual à anterior exceto por ruído de ponto
+  flutuante (|Δ| ≤ 2·10⁻¹⁶ em `fastlio_inlier_rmse`).
 - `run.json` passa a registrar `tol_ms`, desvio assinado mín./máx./mediano, p95 e máximo absolutos e menor intervalo
   entre poses:
 

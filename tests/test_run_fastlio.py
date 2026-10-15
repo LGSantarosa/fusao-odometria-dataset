@@ -132,3 +132,16 @@ def test_reassemble_changes_only_the_matching(tmp_path, monkeypatch):
     assert pd.read_csv(out / "state.csv")["ok"].tolist() == [1] * 10
     assert meta["tol_ms"] == 20.0 and meta["config"] == "x" and meta["reassembled_from"] == str(att)
     assert meta["offset_abs_ms_max"] == pytest.approx(7.0)
+
+
+def test_reassemble_cli_needs_no_bag_or_fastlio_config(monkeypatch):
+    import sys
+    called = {}
+    monkeypatch.setattr(run_fastlio, "reassemble", lambda cfg, seq, out, tol: called.update(seq=seq, out=out, tol=tol))
+    monkeypatch.setattr(run_fastlio.config, "load", lambda p: None)
+    monkeypatch.setattr(sys, "argv", ["run_fastlio", "--reassemble", "--config", "c.yaml", "--seq-dir", "s", "--out", "o"])
+    run_fastlio.main()
+    assert called == {"seq": "s", "out": "o", "tol": 20.0}
+    monkeypatch.setattr(sys, "argv", ["run_fastlio", "--config", "c.yaml", "--seq-dir", "s", "--out", "o"])
+    with pytest.raises(SystemExit):                                  # execução normal continua exigindo --bag
+        run_fastlio.main()

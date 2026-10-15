@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -25,8 +26,9 @@ def assemble(raw_ts, raw_Ts, end_ns, tol_ms=TOL_MS, min_match=0.9, imu_window=No
 
     tol_ms: o FAST-LIO carimba a pose no último ponto que sobra após o próprio pré-processamento (distância mínima,
     subamostragem); end_ns é o último ponto válido da nuvem inteira. Os dois "fins da varredura" diferem em até
-    ~7 ms (1018-13), com poses a >= 96 ms umas das outras: 20 ms casa a pose do próprio scan sem que as janelas de
-    scans vizinhos se sobreponham (2 x 20 < 96). O desvio observado vai para o run.json."""
+    ~7 ms (1018-13). As janelas de ±tol_ms ficam centradas no end_ns de cada scan, e o menor intervalo entre scans
+    é 98,3 ms (1018-13): 2 x 20 < 98 -> janelas de scans vizinhos não se sobrepõem. O menor intervalo entre poses
+    (>= 96 ms) é só uma verificação adicional de unicidade. O desvio observado vai para o run.json."""
     order = np.argsort(raw_ts, kind="stable")
     raw_ts, raw_Ts = np.asarray(raw_ts, np.int64)[order], raw_Ts[order]
     end_ns = np.sort(np.asarray(end_ns, np.int64))
@@ -140,13 +142,15 @@ def reassemble(ds_cfg, seq_dir, out_dir, tol_ms=TOL_MS):
     end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
     finalize(old["attempt_dir"], out_dir, end_ns, {**meta, "reassembled_from": old["attempt_dir"]},
              imu_window(old["ros2_bag"], ds_cfg.topics["imu"]), tol_ms)
+    print(f"{out_dir}: remontado com tol_ms={tol_ms}. indicators.csv voltou ao esboço: refazer ofd.lidar_indicators, "
+          "ofd.build_dataset e ofd.evaluate.", file=sys.stderr)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bag", required=True)
+    ap.add_argument("--bag", help="obrigatório, exceto com --reassemble")
     ap.add_argument("--config", required=True, help="dataset.yaml (tópicos e semântica do tempo por ponto)")
-    ap.add_argument("--fastlio-config", required=True)
+    ap.add_argument("--fastlio-config", help="obrigatório, exceto com --reassemble")
     ap.add_argument("--seq-dir", required=True, help="extração correspondente (para lidar_stamps.csv)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--rate", type=float, default=0.5)
@@ -154,11 +158,14 @@ def main():
     ap.add_argument("--duration", type=float)
     ap.add_argument("--tol-ms", type=float, default=TOL_MS, help="tolerância do casamento pose <-> fim do scan")
     ap.add_argument("--reassemble", action="store_true",
-                    help="só remonta --out a partir do raw_odom.tum já gravado (não executa o FAST-LIO)")
+                    help="só remonta --out a partir do raw_odom.tum já gravado (não executa o FAST-LIO); "
+                         "depois, refazer lidar_indicators, build_dataset e evaluate")
     a = ap.parse_args()
     if a.reassemble:
         reassemble(config.load(a.config), a.seq_dir, a.out, a.tol_ms)
         return
+    if not (a.bag and a.fastlio_config):
+        ap.error("--bag e --fastlio-config são obrigatórios sem --reassemble")
     run(a.bag, config.load(a.config), a.fastlio_config, a.seq_dir, a.out, a.rate, a.start, a.duration, a.tol_ms)
 
 

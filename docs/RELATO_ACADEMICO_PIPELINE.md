@@ -135,7 +135,9 @@ corrente e o passado, de modo a impedir vazamento de informação futura.
 As métricas primárias de trajetória são o Erro Absoluto de Trajetória (ATE) e o Erro Relativo de Pose (RPE). O ATE mede
 a consistência global após alinhamento rígido com o GT. O RPE mede a deriva local entre poses separadas por um quadro ou
 por 10 m de deslocamento. Como um erro pequeno pode ocultar interrupções frequentes, também são reportados cobertura,
-número de falhas, número de reinicializações, duração e distância do maior trecho contínuo e fração elegível da trajetória.
+número de falhas, número de reinicializações, duração e distância do maior trecho contínuo e fração elegível da trajetória,
+definida como a razão entre o comprimento dos segmentos contínuos elegíveis para o ATE e o comprimento total do caminho
+do GT na sequência.
 
 Segmentos menores que 30 s ou 20 m não participam do ATE, embora continuem afetando a cobertura. Quando existem vários
 segmentos elegíveis, o RMSE agregado é ponderado pelo número de poses. Essa regra reduz o risco de produzir ATE
@@ -352,8 +354,11 @@ havia publicado poses para essas varreduras, mas com carimbo de tempo entre 5,6 
 adotado pelo pipeline, acima da tolerância de associação então utilizada (5 ms). O FAST-LIO2 carimba a odometria no
 tempo do último ponto que permanece após seu pré-processamento, enquanto o pipeline define o fim da varredura pelo último
 ponto válido da nuvem completa; trata-se, portanto, de dois conceitos distintos do mesmo instante. A tolerância foi
-alterada para 20 ms porque o maior desvio observado nas quatro sequências foi de 7,02 ms, as poses consecutivas estão
-separadas por pelo menos 96 ms e a associação é monotônica e um-para-um, de modo que janelas de ±20 ms não se sobrepõem.
+alterada para 20 ms. As janelas de associação são centradas no fim de cada varredura, e o menor intervalo entre
+varreduras consecutivas foi de 100,828 ms (1018-00), 98,339 ms (1018-13), 99,587 ms (trecho de 60 s do RELLIS-3D) e
+99,282 ms (00000); como a largura total da janela, 40 ms, é inferior a todos esses valores, janelas de varreduras
+vizinhas não se sobrepõem. O maior desvio observado foi de 7,02 ms, e a associação é monotônica e um-para-um. O
+espaçamento mínimo entre as poses publicadas, de 96,05 ms, constitui apenas verificação adicional de unicidade.
 A alteração corrige a semântica temporal do casamento e não constitui flexibilização destinada a aumentar
 artificialmente a cobertura: a análise de sensibilidade com 5, 10 e 20 ms alterou somente essas quatro varreduras, e os
 resultados com 10 ms e 20 ms foram idênticos; o ATE não foi utilizado na escolha e permaneceu inalterado. Com a correção,
@@ -407,8 +412,10 @@ indicadores, e nenhum dos resultados substitui a validação no robô real.
 
 ### 4.4 Validade dos resultados
 
-O FAST-LIO2 foi repetido três vezes em cada experimento após a correção de QoS, produzindo resultados idênticos. Os demais
-métodos ainda não passaram pelo mesmo número de repetições em todas as sequências. O GT do RELLIS-3D não possui origem
+Após a correção de QoS, o número de execuções do FAST-LIO2 variou conforme a sequência: três no BotanicGarden 1018-00 e
+três no trecho de 60 s do RELLIS-3D, com resultados idênticos entre si; quatro no BotanicGarden 1018-13 (a execução do
+pipeline e três repetições), também idênticas; e uma única execução no RELLIS-3D 00000. As odometrias visuais e o
+KISS-ICP foram executados uma vez em cada sequência, de modo que sua variabilidade entre execuções não foi estimada. O GT do RELLIS-3D não possui origem
 metrológica explicitada e pode ser correlacionado a métodos LiDAR; por isso, a avaliação principal permanece no
 BotanicGarden. Na sequência 00000, além disso, a associação entre poses e varreduras não pôde ser estabelecida de forma
 única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são
@@ -468,4 +475,5 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
   `data/analysis/rellis_assoc/result.json`.
 - Contrato de dados, decisões e riscos: `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md`.
 - Sequências completas e tolerância do casamento do FAST-LIO2: `docs/RESULTS_sequences.md`.
-- Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`.
+- Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`; tolerância do casamento do FAST-LIO2 em
+  `f0b7ea7`, com correções de documentação e da interface de remontagem no commit seguinte.
