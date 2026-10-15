@@ -107,6 +107,14 @@ candidatos; foi corrigida (conjunto de avaliação fixo) antes dos números acim
 pode vir de um SLAM LiDAR e favorecer o FAST-LIO, mas isso não afeta a associação por índice, só a escala dos resíduos.
 (d) A reconciliação por latência de ~100 ms não foi testada e não deve ser usada para aceitar o mapeamento.
 
-**Possível evidência adicional (não executada; exigiria novo protocolo).** Registro direto das nuvens brutas com o
-`poses.txt` (consistência geométrica entre scans b+s e b+s+Δ para s ∈ {0, 1, 2}), que não depende de relógio nem de
-odometria; e a IMU interna do Ouster (`/os1_cloud_node/imu`), que compartilha o relógio da nuvem.
+**Decisão final (15/10/2026): veredito C definitivo para este protocolo.** A associação não será reaberta agora:
+novos testes após observar estes resultados aumentariam os graus de liberdade da análise. Consequências:
+- `ofd.rellis_gt` continua recusando o 00000;
+- RELLIS permanece sem rótulos: cobertura, continuidade, indicadores e avaliação exploratória; **não** se calculam
+  ATE/RPE contra `poses.txt`;
+- BotanicGarden permanece como base confirmatória com GT.
+
+**Trabalho futuro (exige novo protocolo).** (a) IMU interna do Ouster (`/os1_cloud_node/imu`), que compartilha o relógio
+da nuvem: pode esclarecer a latência, mas não identifica quais scans indistinguíveis foram omitidos nos trechos parados.
+(b) Registro das nuvens brutas com o `poses.txt` para s ∈ {0, 1, 2}: verifica consistência geométrica, mas não é
+evidência plenamente independente se as poses vierem de SLAM LiDAR.

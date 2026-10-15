@@ -84,3 +84,51 @@ def test_pose_outside_imu_coverage_is_not_ok():
     ts, Ts, st, info = run_fastlio.assemble(raw, poses(10), end, imu_window=(int(end[3]), int(end[9])))
     assert st["ok"].tolist() == [0, 0, 0] + [1] * 7
     assert ts.tolist() == end[3:].tolist() and np.allclose(Ts[:, 0, 3], np.arange(3, 10))
+
+
+def test_offset_of_7ms_is_accepted_by_default():
+    end = np.arange(10) * 100 * MS
+    raw = end.copy(); raw[4] -= 7 * MS                               # fim da varredura do FAST-LIO 7 ms antes
+    ts, Ts, st, info = run_fastlio.assemble(raw, poses(10), end)
+    assert st["ok"].tolist() == [1] * 10 and info["tol_ms"] == 20.0
+    assert info["offset_ms_min"] == pytest.approx(-7.0) and info["offset_abs_ms_max"] == pytest.approx(7.0)
+    assert info["offset_ms_median"] == pytest.approx(0.0) and info["min_pose_spacing_ms"] == pytest.approx(93.0)
+    assert "offset_abs_ms_p95" in info and "offset_ms_max" in info
+
+
+def test_offset_above_tolerance_is_rejected():
+    end = np.arange(10) * 100 * MS
+    raw = end.copy(); raw[4] -= 21 * MS
+    ts, Ts, st, info = run_fastlio.assemble(raw, poses(10), end, min_match=0.5)
+    assert st["ok"].tolist() == [1, 1, 1, 1, 0, 1, 1, 1, 1, 1]
+    ts5, _, st5, _ = run_fastlio.assemble(end.copy() - 7 * MS * (np.arange(10) == 4), poses(10), end, tol_ms=5.0,
+                                          min_match=0.5)
+    assert st5["ok"].tolist()[4] == 0                                # a tolerância é configurável
+
+
+def test_poses_96ms_apart_associate_one_to_one():
+    end = np.cumsum(np.r_[0, np.full(9, 96)]) * MS                   # scans a 96 ms (menor espaçamento observado)
+    raw = end + np.array([7, -7, 19, -19, 0, 7, -7, 19, -19, 0]) * MS  # desvios até ±19 ms, nunca cruzando vizinhos
+    ts, Ts, st, info = run_fastlio.assemble(raw, poses(10), end)
+    assert st["ok"].tolist() == [1] * 10
+    assert np.allclose(Ts[:, 0, 3], np.arange(10))                   # cada scan recebeu a SUA pose
+
+
+def test_reassemble_changes_only_the_matching(tmp_path, monkeypatch):
+    import json
+    import pandas as pd
+    end = np.arange(10) * 100 * MS
+    raw = end.copy(); raw[4] -= 7 * MS
+    att = _attempt(tmp_path, end, raw)
+    seq = tmp_path / "seq"; seq.mkdir()
+    pd.DataFrame({"ts_ns": end, "end_ns": end}).to_csv(seq / "lidar_stamps.csv", index=False)
+    out = tmp_path / "fastlio"
+    run_fastlio.finalize(att, out, end, {"config": "x", "ros2_bag": "b"}, tol_ms=5.0)
+    assert pd.read_csv(out / "state.csv")["ok"].tolist()[4] == 0
+    monkeypatch.setattr(run_fastlio, "imu_window", lambda bag, topic: None)
+    cfg = type("C", (), {"topics": {"imu": "/imu"}})()
+    run_fastlio.reassemble(cfg, seq, out, tol_ms=20.0)
+    meta = json.loads((out / "run.json").read_text())
+    assert pd.read_csv(out / "state.csv")["ok"].tolist() == [1] * 10
+    assert meta["tol_ms"] == 20.0 and meta["config"] == "x" and meta["reassembled_from"] == str(att)
+    assert meta["offset_abs_ms_max"] == pytest.approx(7.0)

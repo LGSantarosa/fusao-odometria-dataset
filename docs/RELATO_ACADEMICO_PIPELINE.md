@@ -4,7 +4,8 @@
 
 **Data de consolidação:** 15 de outubro de 2026
 
-**Estado:** resultados preliminares dos experimentos de fumaça; as sequências completas ainda estão em processamento.
+**Estado:** experimentos de fumaça e sequências completas BotanicGarden 1018-13 (com GT) e RELLIS-3D 00000 (sem GT,
+exploratória) processados.
 
 Este documento registra, em linguagem acadêmica, as decisões metodológicas, os procedimentos experimentais e os
 resultados obtidos durante a construção do dataset derivado que alimentará o modelo de fusão adaptativa. A organização
@@ -302,13 +303,83 @@ intervalos sem dados do sensor, o que tornava os candidatos incomparáveis; o de
 reportados. A origem do `poses.txt` não é declarada e pode ser correlacionada a métodos LiDAR, o que afeta a
 interpretação de métricas, mas não a comparação por índice.
 
-**Decisão.** Os critérios de concordância, estabilidade e margem não foram atendidos. Manteve-se o veredito C: a sequência
-RELLIS-3D 00000 permanece como dado não rotulado, destinado apenas à avaliação exploratória, e o GT por índice continua
-bloqueado no pipeline. Uma eventual reabertura exigiria novo protocolo com evidência independente de relógio e de
-odometria, como o registro direto das nuvens brutas com as poses de `poses.txt`.
+**Decisão.** Os critérios de concordância, estabilidade e margem não foram atendidos, e o veredito C foi adotado como
+definitivo para este protocolo. A associação não foi reaberta com testes adicionais, pois análises concebidas após a
+observação dos resultados ampliariam os graus de liberdade da inferência. Em consequência, o GT por índice permanece
+bloqueado no pipeline; o RELLIS-3D é utilizado sem rótulos, apenas para cobertura, continuidade, indicadores de qualidade
+e avaliação exploratória, sem cálculo de ATE ou RPE contra `poses.txt`; e o BotanicGarden permanece como base
+confirmatória com GT. Ficam registrados como trabalho futuro, sujeitos a novo protocolo, dois testes: o uso da IMU
+interna do Ouster, que compartilha o relógio da nuvem e poderia esclarecer a latência, embora não identifique quais
+varreduras foram omitidas nos trechos parados; e o registro direto das nuvens brutas com `poses.txt`, que verificaria a
+consistência geométrica, mas não constituiria evidência plenamente independente caso as poses provenham de SLAM LiDAR.
 
 **Rastreabilidade.** `docs/preflight_rellis.md` (seção de 15/10/2026), `tools/rellis_assoc.py`,
 `tests/test_rellis_assoc.py` e `data/analysis/rellis_assoc/result.json`.
+
+### 3.6 Sequências completas: BotanicGarden 1018-13 e RELLIS-3D 00000
+
+**Objetivo.** Verificar o comportamento do pipeline e das odometrias isoladas em sequências completas: a sequência
+BotanicGarden 1018-13, avaliada com GT de levantamento (`survey`) e de caráter confirmatório, e a sequência RELLIS-3D
+00000, processada sem GT e de caráter não supervisionado e exploratório, em razão do veredito C (seção 3.5).
+
+**Dados e configuração.** A sequência 1018-13 possui 208,8 s, 2.071 varreduras VLP-16, 1.600 pares estéreo e 1.938 poses
+de GT, das quais resultaram 1.936 instantes da grade com GT. A sequência 00000 possui 284,9 s, 2.849 varreduras Ouster
+OS1-64 e 3.068 pares estéreo, entregues a 10,77 Hz em média por uma câmera nominalmente de 15 Hz com descartes. Foram
+empregadas as mesmas configurações, versões e correções das seções anteriores. Todos os processos terminaram sem nós
+órfãos, e as tabelas resultantes satisfizeram o contrato de dados.
+
+**Resultados no BotanicGarden 1018-13.**
+
+| Método | ATE (m) | RPE transl. em 10 m (m) | RPE rot. em 10 m | Cobertura | Falhas | Reinic. | Maior trecho contínuo |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ORB-SLAM3 | 1,246 | 0,469 | 0,66° | 74,8% | 2 | 2 | 96,9 s / 121,0 m |
+| Stella VSLAM | 1,601 | 0,586 | 0,68° | 76,4% | 0 | 0 | 100,4 s / 122,7 m |
+| FAST-LIO2 | 0,067 | 0,100 | 0,80° | 87,6% | 1 | 0 | 183,1 s / 200,7 m |
+| KISS-ICP | 1,827 | 0,250 | 3,06° | 100,0% | 0 | 0 | 208,8 s / 201,1 m |
+
+Fonte: Elaborada pelo autor (2026). A cobertura tem como denominador os 2.071 instantes da grade LiDAR.
+
+O FAST-LIO2 apresentou o menor erro, mas sua cobertura foi limitada pela IMU, que abrange as varreduras 131 a 1.948
+(1.818 varreduras); dentro dessa janela, 1.816 varreduras receberam pose, e as duas ausentes correspondem à
+inicialização. A única falha registrada é a transição no fim da cobertura da IMU. As odometrias visuais ficaram
+restritas à janela das câmeras. O KISS-ICP manteve cobertura praticamente total, mas apresentou ATE de 1,83 m em 201 m,
+valor muito superior ao observado na sequência 1018-00 (0,13 m em 115 m), e o maior erro rotacional entre os métodos.
+A causa desse aumento não foi investigada e não deve ser inferida a partir destes dados.
+
+**Correção da semântica temporal do casamento no FAST-LIO2.** Na primeira montagem, quatro varreduras consecutivas do
+1018-13 (índices 1.810 a 1.813) apareceram sem pose, de forma idêntica em quatro execuções. Verificou-se que o FAST-LIO2
+havia publicado poses para essas varreduras, mas com carimbo de tempo entre 5,6 ms e 7,0 ms anterior ao fim da varredura
+adotado pelo pipeline, acima da tolerância de associação então utilizada (5 ms). O FAST-LIO2 carimba a odometria no
+tempo do último ponto que permanece após seu pré-processamento, enquanto o pipeline define o fim da varredura pelo último
+ponto válido da nuvem completa; trata-se, portanto, de dois conceitos distintos do mesmo instante. A tolerância foi
+alterada para 20 ms porque o maior desvio observado nas quatro sequências foi de 7,02 ms, as poses consecutivas estão
+separadas por pelo menos 96 ms e a associação é monotônica e um-para-um, de modo que janelas de ±20 ms não se sobrepõem.
+A alteração corrige a semântica temporal do casamento e não constitui flexibilização destinada a aumentar
+artificialmente a cobertura: a análise de sensibilidade com 5, 10 e 20 ms alterou somente essas quatro varreduras, e os
+resultados com 10 ms e 20 ms foram idênticos; o ATE não foi utilizado na escolha e permaneceu inalterado. Com a correção,
+a cobertura do FAST-LIO2 no 1018-13 passou de 87,4% para 87,6%, as falhas de 2 para 1 e o maior trecho contínuo de
+169,0 s para 183,1 s; as demais sequências não se alteraram. O desvio observado passou a ser registrado em cada execução.
+
+**Resultados no RELLIS-3D 00000 (não supervisionado).** Por não haver GT utilizável, não foram calculados ATE nem RPE, e
+todas as colunas de GT da tabela permanecem vazias. O FAST-LIO2 produziu pose para 99,9% das varreduras (ausentes apenas
+as três iniciais) e o KISS-ICP para 100,0%, ambos sem falhas, com trechos contínuos de 284,5 s e 284,8 s. As odometrias
+visuais rastrearam todos os 3.068 quadros sem perda, mas apresentaram cobertura de 85,1% na grade LiDAR e trecho
+contínuo máximo de 3,5 s. Essa descontinuidade não decorre de falha de rastreamento: nos intervalos de 133 ms entre
+quadros, alguns instantes da grade de 10 Hz não recebem quadro novo, e o incremento correspondente é invalidado por
+construção. Nesse dataset, portanto, o indicador de continuidade das odometrias visuais reflete a entrega da câmera, e
+não a robustez do algoritmo.
+
+**Ameaças à validade.** Os resultados do 1018-13 correspondem a uma única execução para as odometrias visuais e o
+KISS-ICP; o FAST-LIO2 foi repetido quatro vezes, com resultados idênticos. O GT do BotanicGarden refere-se a um
+levantamento cuja precisão declarada é a do mapa, não a de cada pose. Os resultados do RELLIS-3D não permitem
+conclusões sobre exatidão.
+
+**Decisão.** A tolerância de 20 ms foi adotada como padrão do pipeline, com registro do desvio em cada execução. O
+BotanicGarden permanece como base confirmatória; o RELLIS-3D 00000 é incorporado apenas para cobertura, continuidade e
+indicadores.
+
+**Rastreabilidade.** `docs/RESULTS_sequences.md`, `data/output/metrics.csv`, `data/runs/1018-13/fastlio/run.json` e
+`ofd/run_fastlio.py`.
 
 ## 4. Ameaças à validade
 
@@ -328,9 +399,11 @@ atribuídas incorretamente ao estimador sem o experimento controlado.
 
 ### 4.3 Validade externa
 
-Os resultados preliminares abrangem apenas uma sequência com GT e um trecho curto sem GT. Portanto, não permitem
-generalização para todos os ambientes externos, condições climáticas ou configurações sensoriais. A execução das
-sequências BotanicGarden 1018-13 e RELLIS-3D 00000 amplia a diversidade, mas ainda não substitui validação no robô real.
+Os resultados abrangem duas sequências com GT, ambas do BotanicGarden (1018-00 e 1018-13), e duas sem GT do
+RELLIS-3D (trecho de 60 s e sequência 00000). Portanto, não permitem generalização para todos os ambientes externos,
+condições climáticas ou configurações sensoriais, e a avaliação confirmatória restringe-se a um único ambiente e a um
+único conjunto de sensores. A inclusão do RELLIS-3D amplia a diversidade apenas para cobertura, continuidade e
+indicadores, e nenhum dos resultados substitui a validação no robô real.
 
 ### 4.4 Validade dos resultados
 
@@ -338,8 +411,8 @@ O FAST-LIO2 foi repetido três vezes em cada experimento após a correção de Q
 métodos ainda não passaram pelo mesmo número de repetições em todas as sequências. O GT do RELLIS-3D não possui origem
 metrológica explicitada e pode ser correlacionado a métodos LiDAR; por isso, a avaliação principal permanece no
 BotanicGarden. Na sequência 00000, além disso, a associação entre poses e varreduras não pôde ser estabelecida de forma
-única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são incorporados até que os contratos e as métricas sejam
-verificados.
+única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são
+incorporados até que os contratos e as métricas sejam verificados.
 
 ## 5. Implicações para o modelo de fusão
 
@@ -356,9 +429,8 @@ com cada fonte isolada e com estratégias de pesos fixos, conforme as hipóteses
 
 ## 6. Próximos experimentos
 
-1. Concluir o processamento do BotanicGarden 1018-13 e verificar contrato, cobertura, ATE e RPE.
-2. Decidir se a associação do RELLIS-3D 00000 será reaberta com novo protocolo independente de relógio e de odometria
-   (seção 3.5); até lá, a sequência permanece sem GT.
+1. Investigar o aumento do ATE do KISS-ICP no BotanicGarden 1018-13 (1,83 m, contra 0,13 m no 1018-00).
+2. Repetir as odometrias visuais e o KISS-ICP nas sequências completas para estimar a variabilidade entre execuções.
 3. Investigar a causa física da degradação do KISS-ICP com *deskew*, sem alterar a decisão experimental já sustentada
    pelos resultados.
 4. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
@@ -395,4 +467,5 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
 - Associação do GT do RELLIS-3D (preliminar e sequência 00000): `docs/preflight_rellis.md`, `tools/rellis_assoc.py`,
   `data/analysis/rellis_assoc/result.json`.
 - Contrato de dados, decisões e riscos: `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md`.
+- Sequências completas e tolerância do casamento do FAST-LIO2: `docs/RESULTS_sequences.md`.
 - Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`.

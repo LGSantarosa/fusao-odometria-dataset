@@ -16,9 +16,17 @@ from ofd.matching import match_monotonic
 ROS = "source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash && "
 
 
-def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9, imu_window=None):
+TOL_MS = 20.0
+
+
+def assemble(raw_ts, raw_Ts, end_ns, tol_ms=TOL_MS, min_match=0.9, imu_window=None):
     """imu_window=(t0, t1): um LIO não pode estimar fora da cobertura da IMU; a fração mínima é exigida só
-    sobre os scans dentro dela (os de fora ficam ok=0 e são contados à parte)."""
+    sobre os scans dentro dela (os de fora ficam ok=0 e são contados à parte).
+
+    tol_ms: o FAST-LIO carimba a pose no último ponto que sobra após o próprio pré-processamento (distância mínima,
+    subamostragem); end_ns é o último ponto válido da nuvem inteira. Os dois "fins da varredura" diferem em até
+    ~7 ms (1018-13), com poses a >= 96 ms umas das outras: 20 ms casa a pose do próprio scan sem que as janelas de
+    scans vizinhos se sobreponham (2 x 20 < 96). O desvio observado vai para o run.json."""
     order = np.argsort(raw_ts, kind="stable")
     raw_ts, raw_Ts = np.asarray(raw_ts, np.int64)[order], raw_Ts[order]
     end_ns = np.sort(np.asarray(end_ns, np.int64))
@@ -32,8 +40,14 @@ def assemble(raw_ts, raw_Ts, end_ns, tol_ms=5.0, min_match=0.9, imu_window=None)
                            f"{np.median(near) / 1e6:.1f} ms — conferir timestamp_unit/end_ns")
     ok = ((m >= 0) & cov).astype(int)
     state = pd.DataFrame({"ts_ns": end_ns, "ok": ok, "map_id": 0})
-    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {"matched_frac": frac, "matched_frac_all": frac_all,
-                                                         "n_scans_without_imu": int((~cov).sum()), "tol_ms": tol_ms}
+    off = (raw_ts[m[m >= 0]] - end_ns[m >= 0]) / 1e6          # desvio assinado pose - fim do scan (ms)
+    gap = np.diff(raw_ts) / 1e6
+    stats = {"offset_ms_min": float(off.min()), "offset_ms_max": float(off.max()),
+             "offset_ms_median": float(np.median(off)), "offset_abs_ms_p95": float(np.percentile(np.abs(off), 95)),
+             "offset_abs_ms_max": float(np.abs(off).max())} if len(off) else {}
+    return end_ns[ok == 1], raw_Ts[m[ok == 1]], state, {
+        "matched_frac": frac, "matched_frac_all": frac_all, "n_scans_without_imu": int((~cov).sum()),
+        "tol_ms": tol_ms, **stats, "min_pose_spacing_ms": float(gap.min()) if len(gap) else None}
 
 
 def _promote(staging, out_dir):
@@ -54,12 +68,12 @@ def imu_window(ros2_bag, imu_topic):
     return (int(min(ts)), int(max(ts))) if ts else None
 
 
-def finalize(attempt_dir, out_dir, end_ns, meta, imu_win=None):
+def finalize(attempt_dir, out_dir, end_ns, meta, imu_win=None, tol_ms=TOL_MS):
     """Monta o formato comum a partir dos artefatos de UMA tentativa e promove atomicamente.
     Em falha, levanta e não toca em out_dir; a tentativa fica preservada para comparação."""
     attempt_dir, out_dir = Path(attempt_dir), Path(out_dir)
     raw_ts, raw_Ts = se3.load_tum(attempt_dir / "raw_odom.tum")
-    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns, imu_window=imu_win)
+    ts, Ts, state, info = assemble(raw_ts, raw_Ts, end_ns, tol_ms=tol_ms, imu_window=imu_win)
     staging = out_dir.with_name(out_dir.name + f".staging-{os.getpid()}")
     if staging.exists():
         shutil.rmtree(staging)
@@ -75,7 +89,7 @@ def finalize(attempt_dir, out_dir, end_ns, meta, imu_win=None):
             shutil.rmtree(staging)
 
 
-def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration=None):
+def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration=None, tol_ms=TOL_MS):
     out_dir = Path(out_dir)
     attempt = out_dir.with_name(out_dir.name + ".attempts") / time.strftime("%Y%m%dT%H%M%S")
     attempt.mkdir(parents=True, exist_ok=False)
@@ -110,7 +124,22 @@ def run(bag1, ds_cfg, cfg_yaml, seq_dir, out_dir, rate=0.5, start=None, duration
             "config": cfg_yaml.read_text(), "rate": rate,
             "start": start, "duration": duration, "ros2_bag": str(ros2_bag_dir),
             "point_time": ds_cfg.point_time}
-    finalize(attempt, out_dir, end_ns, meta, imu_window(ros2_bag_dir, ds_cfg.topics["imu"]))
+    finalize(attempt, out_dir, end_ns, meta, imu_window(ros2_bag_dir, ds_cfg.topics["imu"]), tol_ms)
+
+
+ASSEMBLE_KEYS = {"matched_frac", "matched_frac_all", "n_scans_without_imu", "tol_ms", "offset_ms_min",
+                 "offset_ms_max", "offset_ms_median", "offset_abs_ms_p95", "offset_abs_ms_max",
+                 "min_pose_spacing_ms", "attempt_dir"}
+
+
+def reassemble(ds_cfg, seq_dir, out_dir, tol_ms=TOL_MS):
+    """Remonta out_dir a partir do raw_odom.tum da tentativa registrada no run.json, sem reexecutar o FAST-LIO."""
+    out_dir = Path(out_dir)
+    old = json.loads((out_dir / "run.json").read_text())
+    meta = {k: v for k, v in old.items() if k not in ASSEMBLE_KEYS}
+    end_ns = pd.read_csv(Path(seq_dir) / "lidar_stamps.csv")["end_ns"].to_numpy(np.int64)
+    finalize(old["attempt_dir"], out_dir, end_ns, {**meta, "reassembled_from": old["attempt_dir"]},
+             imu_window(old["ros2_bag"], ds_cfg.topics["imu"]), tol_ms)
 
 
 def main():
@@ -123,8 +152,14 @@ def main():
     ap.add_argument("--rate", type=float, default=0.5)
     ap.add_argument("--start", type=float)
     ap.add_argument("--duration", type=float)
+    ap.add_argument("--tol-ms", type=float, default=TOL_MS, help="tolerância do casamento pose <-> fim do scan")
+    ap.add_argument("--reassemble", action="store_true",
+                    help="só remonta --out a partir do raw_odom.tum já gravado (não executa o FAST-LIO)")
     a = ap.parse_args()
-    run(a.bag, config.load(a.config), a.fastlio_config, a.seq_dir, a.out, a.rate, a.start, a.duration)
+    if a.reassemble:
+        reassemble(config.load(a.config), a.seq_dir, a.out, a.tol_ms)
+        return
+    run(a.bag, config.load(a.config), a.fastlio_config, a.seq_dir, a.out, a.rate, a.start, a.duration, a.tol_ms)
 
 
 if __name__ == "__main__":
