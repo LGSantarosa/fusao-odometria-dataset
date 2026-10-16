@@ -39,3 +39,45 @@ em paralelo; houve uso interativo da máquina (navegador) durante a fase.
 **Decisão (seção 6):** as 8 combinações são variáveis. Pela regra, todas passam a dez execuções (r4–r10 em todas as
 combinações, ~2 h 40 min em tempo real), e as métricas da fase 2 serão reportadas como distribuição sobre as dez.
 **O escalonamento não foi iniciado:** aguarda revisão desta fase.
+
+## Escalonamento para dez execuções (r4–r10) — 16/10/2026
+
+Liberado após a revisão da fase 1. Execuções: `python -m ofd.run_vo_repeat --reps 4-10 --from-decisions
+data/analysis/vo_repeat/phase1/decisions.json` (56 execuções, mesma ordem intercalada; registros com `repo_commit`
+`a8bb1bd`, que difere de `084243d` só na documentação). Análise: `python -m ofd.vo_repeat --from-decisions
+data/analysis/vo_repeat/phase1/decisions.json --out data/analysis/vo_repeat/phase1_escalated` (r1–r10, 45 pares por
+combinação). Nenhuma métrica de erro (GT) foi calculada ou consultada.
+
+**Execução.** 56/56 com código de saída 0, `status: finished`, tentativa 1; as 80 execuções (r1–r10) são válidas pela
+seção 5.1. Razão relógio/sequência em r4–r10: 1,02 a 1,13. Carga média de 1 min no início: 2,8 a 8,3 (16 núcleos),
+acima da faixa da fase 1 em algumas execuções (máximo em 00000/Stella r5, 1018-13/Stella r7, rellis_example/Stella r9
+e 1018-13/ORB-SLAM3 r7, todas entre 7,3 e 8,3), sem outro experimento em paralelo.
+
+**Hashes distintos entre as 10 execuções.** `poses_causal.tum` e `indicators.csv`: 10 em todas as combinações.
+`state.csv`: 1 em seis combinações; 3 em 1018-13/ORB-SLAM3 e 6 em 00000/ORB-SLAM3.
+
+**Componentes A, B e C** (máximo e mediana sobre os 45 pares; B e C no frame `cam_left`, sem GT):
+
+| Combinação | A idêntico (pares) | B máx. t (m) | B máx. r (°) | C máx. t (m) | C máx. r (°) | C mediana t (m) | C mediana r (°) | Decisão |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 1018-00 / ORB-SLAM3 | 45/45 | 0,207 | 3,49 | 0,540 | 6,03 | 0,219 | 2,60 | variável |
+| 1018-00 / Stella | 45/45 | 0,072 | 0,49 | 0,309 | 0,74 | 0,184 | 0,50 | variável |
+| 1018-13 / ORB-SLAM3 | **22/45** | 0,250 | 2,14 | 0,405 | 2,37 | 0,201 | 0,66 | variável |
+| 1018-13 / Stella | 45/45 | 0,186 | 2,34 | 1,929 | 2,68 | 0,755 | 1,04 | variável |
+| rellis_example / ORB-SLAM3 | 45/45 | 0,088 | 1,36 | 0,398 | 1,39 | 0,121 | 0,58 | variável |
+| rellis_example / Stella | 45/45 | 0,199 | 0,35 | 0,256 | 0,54 | 0,065 | 0,23 | variável |
+| 00000 / ORB-SLAM3 | **10/45** | 0,686 | 4,87 | 33,12 | 11,39 | 4,664 | 3,98 | variável |
+| 00000 / Stella | 45/45 | 1,950 | 0,50 | 10,27 | 4,14 | 5,451 | 2,49 | variável |
+
+- Componente A, só no ORB-SLAM3:
+  - 1018-13: r1–r5, r8 e r9 têm 2 falhas e 2 reinícios (3 segmentos); r6, r7 e r10 têm 3 e 3 (4 segmentos).
+    Diferença de cobertura até 2,0 pontos percentuais.
+  - 00000: falhas/reinícios por execução — 0 (r1, r2, r6, r7, r10), 1 (r3, r4, r5, r9) e 3 (r8). Diferença de
+    cobertura até 3,3 pontos percentuais; até 102 quadros de `ok` divergente (pares com r8).
+  - Em todos os pares, B e C tiveram comparações definidas (B ≥ 1.500 e C ≥ 1.503 incrementos/poses no 1018-13;
+    ≥ 2.926/2.931 no 00000), com até 3 e 5 sobreposições, respectivamente.
+- B e C ficaram acima dos limiares (1 mm e 0,01°) em todos os 360 pares; o menor B máx. t foi 10,3 mm
+  (rellis_example/Stella) e o menor C máx. t, 14,1 mm (idem).
+
+**Decisão (seção 6):** as 8 combinações seguem variáveis com dez execuções. As métricas da fase 2 serão reportadas
+como distribuição sobre r1–r10 (estatísticas da seção 7). **A fase 2 não foi iniciada:** exige liberação separada.

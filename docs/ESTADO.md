@@ -42,12 +42,13 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes
    pelo teste pré-registrado; H5 parcial). Em aberto: piora do RPE por quadro sob qualquer compensação, inclusive D4.
 2. Repetições das VOs: protocolo pré-registrado (`docs/protocol_vo_repeat.md`, commit `e682f15`); implementação
    validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, commit `084243d`). Fase 1 (r1–r3,
-   `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis → escalonamento r4–r10 liberado
-   (`python -m ofd.run_vo_repeat --reps 4-10 --from-decisions data/analysis/vo_repeat/phase1/decisions.json`, ~2 h 40
-   min), depois `python -m ofd.vo_repeat --from-decisions ... --out data/analysis/vo_repeat/phase1_escalated`. Fase 2
-   e métricas de erro bloqueadas até nova revisão.
+   `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis. Escalonamento r4–r10 concluído em
+   16/10: 56/56 ok, 80/80 válidas; as 8 combinações seguem variáveis com dez execuções (análise em
+   `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). **Próximo passo: revisão
+   do escalonamento (commitado sem revisão externa, a pedido do usuário) e liberação da fase 2** (métricas de erro como
+   distribuição sobre r1–r10, seção 7 do protocolo). Fase 2 e métricas de erro bloqueadas até essa liberação.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
-4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
+4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-16).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
