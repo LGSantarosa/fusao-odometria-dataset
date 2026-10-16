@@ -41,10 +41,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes
    H3 inconclusiva/não atribuída (proxies de estrutura mistos). Q2: causa não identificada (H2, H4, H6 não sustentadas; H1 não atribuída
    pelo teste pré-registrado; H5 parcial). Em aberto: piora do RPE por quadro sob qualquer compensação, inclusive D4.
 2. Repetições das VOs: protocolo pré-registrado (`docs/protocol_vo_repeat.md`, commit `e682f15`); implementação
-   validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, §10 do protocolo). Próximo: fase 1
-   (`python -m ofd.run_vo_repeat --reps 1,2,3`, ~1 h 10 min, sem nada em paralelo; depois
-   `python -m ofd.vo_repeat --out data/analysis/vo_repeat/phase1`) e decisão por combinação, sem
-   métricas de erro; fase 2 só após liberação separada.
+   validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, commit `084243d`). Fase 1 (r1–r3,
+   `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis → escalonamento r4–r10 liberado
+   (`python -m ofd.run_vo_repeat --reps 4-10 --from-decisions data/analysis/vo_repeat/phase1/decisions.json`, ~2 h 40
+   min), depois `python -m ofd.vo_repeat --from-decisions ... --out data/analysis/vo_repeat/phase1_escalated`. Fase 2
+   e métricas de erro bloqueadas até nova revisão.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
 4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
 
