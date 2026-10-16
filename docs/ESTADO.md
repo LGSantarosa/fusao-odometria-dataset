@@ -1,6 +1,6 @@
 # Estado do projeto — 2026-10-16
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 141 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -40,7 +40,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 141 testes
    (D1/D3 passam no 1018-13 e falham no RPE do 1018-00). Q1: erro do 1018-13 associado a trechos de rotação rápida;
    H3 inconclusiva/não atribuída (proxies de estrutura mistos). Q2: causa não identificada (H2, H4, H6 não sustentadas; H1 não atribuída
    pelo teste pré-registrado; H5 parcial). Em aberto: piora do RPE por quadro sob qualquer compensação, inclusive D4.
-2. Repetir as VOs nas sequências completas (variabilidade entre execuções).
+2. Repetições das VOs: protocolo pré-registrado (`docs/protocol_vo_repeat.md`, commit `e682f15`); implementação
+   validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, §10 do protocolo). Próximo: fase 1
+   (`python -m ofd.run_vo_repeat --reps 1,2,3`, ~1 h 10 min, sem nada em paralelo; depois
+   `python -m ofd.vo_repeat --out data/analysis/vo_repeat/phase1`) e decisão por combinação, sem
+   métricas de erro; fase 2 só após liberação separada.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
 4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
 

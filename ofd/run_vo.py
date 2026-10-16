@@ -11,6 +11,7 @@ from ofd import se3, tracks
 
 BIN = {"orbslam3": "third_party/bin/orbslam3_stereo_log", "stella": "third_party/bin/stella_stereo_log"}
 VOCAB = {"orbslam3": "third_party/ORB_SLAM3/Vocabulary/ORBvoc.txt", "stella": "third_party/orb_vocab.fbow"}
+COMMIT = {"orbslam3": "4452a3c4ab75", "stella": "e445b5452535"}  # commit-base; patches em patches/<método>/
 
 
 def convert(frames_csv, out_dir, method, meta):
@@ -37,7 +38,7 @@ def main():
     with open(out / "log.txt", "w") as log:
         subprocess.run([BIN[a.method], VOCAB[a.method], a.settings, a.seq_dir, str(out)],
                        check=True, stdout=log, stderr=log, env=env)
-    commit = {"orbslam3": "4452a3c4ab75", "stella": "e445b5452535"}[a.method]
+    commit = COMMIT[a.method]
     convert(out / "frames.csv", out, a.method,
             {"settings": Path(a.settings).read_text(), "rate": a.rate, "commit": commit})
 

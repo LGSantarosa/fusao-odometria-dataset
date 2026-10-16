@@ -200,3 +200,47 @@ Estimativa de custo: como as VOs rodam em tempo real, cada rodada completa (8 co
 das janelas de imagem das quatro sequências (96 s, 160 s, 60 s e 285 s) para os dois métodos, cerca de 20 min mais o
 carregamento dos vocabulários; três rodadas, cerca de 1 h 10 min; o escalonamento de todas as combinações para dez
 execuções, cerca de 2 h 40 min adicionais.
+
+## 10. Registro de implementação — 16/10/2026 (após o registro, antes das execuções)
+
+Esta seção registra a implementação prevista na seção 9; não altera regras, limiares nem estatísticas. Nenhuma
+repetição das VOs foi executada.
+
+- `ofd/vo_repeat.py`:
+  - integridade (`validate_run`): artefatos ilegíveis, colunas obrigatórias ausentes (`ts_ns`, `ok`, `map_id` em
+    `state.csv`; `ts_ns` e os quatro indicadores em `indicators.csv`), `ts_ns`, `ok` ou `map_id` não inteiros (frações
+    ou ausentes, que seriam truncados ou alterariam a segmentação), `ok` fora de {0, 1}, indicadores não numéricos ou
+    poses com valores não finitos tornam a execução inválida, sem interromper a análise;
+  - registro externo (`read_record`): só é aceito com `status: finished` explícito e código de saída inteiro; ausente,
+    ilegível (JSON inválido ou não objeto) ou incompleto (status ausente, desconhecido ou `running`, isto é, execução
+    interrompida) torna a execução inválida; a situação fica gravada na coluna `record_status`;
+  - componentes A, B e C (`compare_pair`); o componente A grava cobertura, quadros e instantes com `ok` divergente,
+    falhas e reinícios de cada execução (mesmas definições de `ofd.evaluate.coverage`) e os instantes das fronteiras de
+    segmento presentes só em uma das execuções;
+  - regra da seção 6 sobre todos os pares (`analyze_combination`), que recusa classificar menos de duas execuções;
+  - fase 1: `python -m ofd.vo_repeat --out data/analysis/vo_repeat/phase1` (r1–r3 em todas as combinações) e, após o
+    escalonamento, `python -m ofd.vo_repeat --from-decisions data/analysis/vo_repeat/phase1/decisions.json
+    --out data/analysis/vo_repeat/phase1_escalated`, que analisa r1–r10 só nas combinações variáveis e mantém r1–r3 nas
+    demais;
+  - estatísticas da seção 7 (`describe`) e medianas dos indicadores (`indicator_medians`).
+- `ofd/run_vo_repeat.py`:
+  - ordem intercalada da seção 4 sobre pares exatos (sequência, método) (`plan`); seleção por `--combos seq/método,...`
+    ou `--from-decisions` (só as variáveis); sequências, métodos, combinações e repetições desconhecidos ou repetidos
+    são rejeitados, e uma seleção vazia é erro;
+  - execução individual de `ofd.run_vo` com `--rate 1.0`; registro por execução em
+    `data/analysis/vo_repeat/logs/<seq>_<método>_r<k>.{json,log}` com commit do repositório, commit-base do método
+    (`ofd.run_vo.COMMIT`) e SHA-256 de cada patch em `patches/<método>/`, CPU, número de núcleos, carga média no início
+    e no fim, duração de relógio e razão sobre a duração da sequência, código de saída e SHA-256 do binário, do
+    vocabulário, da configuração e do `extract.json`;
+  - o registro é gravado atomicamente antes do subprocesso (`status: running`, sem código de saída) e atualizado
+    atomicamente no fim (`status: finished`), de modo que uma interrupção deixa a tentativa identificada;
+  - nunca sobrescreve: diretório, registro ou log existentes contam como tentativa anterior, e só se prossegue com
+    `--retry-cause` (causa externa documentada, seção 4, item 6), restrito a uma única execução e recusado quando não
+    há tentativa anterior; a tentativa anterior é arquivada com o sufixo `.attempt<n>` (diretório, registro e log),
+    com n igual ao menor número livre, inclusive quando o registro anterior está ilegível (preservado como está e
+    marcado em `previous_attempts`); o mesmo k é mantido.
+- Validação sintética: `tests/test_vo_repeat.py` e `tests/test_run_vo_repeat.py` cobrem os casos da seção 9 e os
+  itens acima. Em execuções idênticas, o componente C resulta em até ~10⁻¹⁵ m por arredondamento do produto inv(A)·P;
+  a identidade bit a bit é decidida pelos hashes, não por C.
+- Verificação de integridade aplicada às execuções oficiais existentes (já conhecidas, sem métricas de erro): as oito
+  são válidas, o que confirma que a regra da seção 5.1 não reprova saídas normais do executor.
