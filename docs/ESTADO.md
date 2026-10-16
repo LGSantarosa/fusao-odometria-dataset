@@ -1,6 +1,6 @@
-# Estado do projeto — 2026-10-15
+# Estado do projeto — 2026-10-16
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 140 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 141 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -35,17 +35,14 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 140 testes
 - Saídas: `data/output/*.parquet|csv`, `schema.json`, `metrics.csv`; análise da associação em `data/analysis/rellis_assoc/`.
 
 ## Próximos passos
-1. Fase 1 do KISS-ICP concluída (`docs/RESULTS_kissicp.md`, commit `8564ca1`): 60 execuções, determinístico em
-   todas as condições, H4 rejeitada pelo critério operacional; D4′ acionado pela regra. Fase 2 formalmente liberada
-   pelo revisor em 2026-10-15 e ainda não iniciada (nenhuma métrica de erro aberta).
-2. Fase 2: com a repetição 1 de cada condição (`kissicp_<C>_r1`; r2/r3 não são amostras nem servem para selecionar),
-   abrir as métricas pareadas no suporte comum de GT (`ofd.kissicp_analysis`), aplicar literalmente os critérios de
-   promoção a D1–D3, usar D4/D4′ só para atribuição diagnóstica, manter o RELLIS exploratório e registrar resultados
-   negativos e causas não identificadas sem reinterpretar critérios; documentar Q1/Q2 em `docs/RESULTS_kissicp.md`
-   e no relato.
-3. Repetir as VOs nas sequências completas (variabilidade entre execuções).
-4. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
-5. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
+1. Investigação do KISS-ICP concluída (fases 1 e 2; `docs/RESULTS_kissicp.md`, relato §3.7). Fase 2 (16/10, só r1,
+   métricas pareadas no suporte comum de GT, `tools/kissicp_phase2.py`): **nenhuma candidata promovida, D0 mantida**
+   (D1/D3 passam no 1018-13 e falham no RPE do 1018-00). Q1: erro do 1018-13 associado a trechos de rotação rápida;
+   H3 inconclusiva/não atribuída (proxies de estrutura mistos). Q2: causa não identificada (H2, H4, H6 não sustentadas; H1 não atribuída
+   pelo teste pré-registrado; H5 parcial). Em aberto: piora do RPE por quadro sob qualquer compensação, inclusive D4.
+2. Repetir as VOs nas sequências completas (variabilidade entre execuções).
+3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
+4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-15).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.

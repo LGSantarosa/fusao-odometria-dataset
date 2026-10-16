@@ -249,7 +249,9 @@ velocidades translacional e angular do FAST-LIO2.
 
 A causa física do comportamento ainda não foi demonstrada. A hipótese de que as nuvens já tenham sido compensadas pelos
 drivers permanece não verificada e não deve ser apresentada como conclusão. Até que a causa seja identificada, o
-*deskew* permanece desativado nos dois datasets porque essa decisão é sustentada pelas métricas observadas.
+*deskew* permanece desativado nos dois datasets porque essa decisão é sustentada pelas métricas observadas. A
+investigação controlada subsequente, com critérios definidos antes das execuções, manteve essa decisão e não
+identificou a causa (seção 3.7).
 
 ### 3.5 Associação entre o GT do RELLIS-3D e as varreduras da sequência 00000
 
@@ -346,7 +348,7 @@ O FAST-LIO2 apresentou o menor erro, mas sua cobertura foi limitada pela IMU, qu
 inicialização. A única falha registrada é a transição no fim da cobertura da IMU. As odometrias visuais ficaram
 restritas à janela das câmeras. O KISS-ICP manteve cobertura praticamente total, mas apresentou ATE de 1,83 m em 201 m,
 valor muito superior ao observado na sequência 1018-00 (0,13 m em 115 m), e o maior erro rotacional entre os métodos.
-A causa desse aumento não foi investigada e não deve ser inferida a partir destes dados.
+A causa desse aumento foi investigada posteriormente por protocolo pré-registrado (seção 3.7).
 
 **Correção da semântica temporal do casamento no FAST-LIO2.** Na primeira montagem, quatro varreduras consecutivas do
 1018-13 (índices 1.810 a 1.813) apareceram sem pose, de forma idêntica em quatro execuções. Verificou-se que o FAST-LIO2
@@ -386,6 +388,104 @@ indicadores.
 **Rastreabilidade.** `docs/RESULTS_sequences.md`, `data/output/metrics.csv`, `data/runs/1018-13/fastlio/run.json` e
 `ofd/run_fastlio.py`.
 
+### 3.7 Investigação pré-registrada do erro do KISS-ICP e da compensação temporal
+
+**Objetivo.** Responder a duas perguntas: (Q1) que regime de movimento ou região explica o erro do KISS-ICP no
+BotanicGarden 1018-13; e (Q2) por que habilitar a compensação temporal intra-varredura (*deskew*) piorou o KISS-ICP no
+1018-00 e no RELLIS-3D (seção 3.4).
+
+**Hipóteses.** Foram formuladas seis hipóteses antes de qualquer execução nova: distorção intra-varredura não
+compensada (H1), tempo por ponto incorreto (H2), degenerescência geométrica (H3), não determinismo (H4), falha do
+modelo de movimento usado pela compensação interna, que extrapola o movimento da varredura anterior (H5), e nuvens já
+compensadas na origem (H6). Cada hipótese foi associada a um padrão de resultados que a distingue das demais.
+
+**Procedimento.** O protocolo (`docs/protocol_kissicp.md`) fixou condições, métricas e critérios antes das execuções.
+Compararam-se seis condições: sem compensação, configuração vigente (D0); compensação interna com o campo de tempo
+original (D1), com o tempo invertido (D2) e com o tempo reconstruído pela geometria da varredura (D3); e, como controle
+diagnóstico, compensação externa com a pose do GT interpolada (D4 e, por regra pré-fixada, D4′, com o tempo
+reconstruído). D4 e D4′ utilizam o mesmo GT da avaliação e, por isso, nunca foram candidatas ao pipeline. A
+investigação teve duas fases. Na primeira, cada condição foi executada três vezes, e a repetibilidade foi decidida
+antes de abrir qualquer métrica de erro. Na segunda, liberada por revisão independente, utilizou-se somente a primeira
+execução de cada condição, avaliada exatamente nos mesmos instantes de GT para todas as condições. Uma condição seria
+promovida apenas se, separadamente no 1018-00 e no 1018-13, reduzisse em pelo menos 5% o RPE translacional e o
+rotacional em janelas de 10 m, não aumentasse o ATE em mais de 5% e não reduzisse a cobertura nem aumentasse as falhas.
+A atribuição de causa exigia o padrão pré-registrado de cada hipótese, obtido por intervenção; correlações foram
+tratadas como descritivas. O RELLIS-3D, sem GT utilizável, foi analisado apenas de forma exploratória.
+
+**Resultados — repetibilidade.** As três execuções de cada condição produziram trajetórias idênticas bit a bit nas
+quatro sequências; o KISS-ICP 1.3.0 é determinístico neste ambiente, e H4 foi rejeitada.
+
+**Resultados — métricas de erro.** Todas as condições mantiveram cobertura de 100% e nenhuma falha.
+
+| Sequência | Condição | RPE transl. 10 m (m) | RPE rot. 10 m | ATE (m) | Erro transl. por 100 m | Erro rot. por 100 m |
+|---|---|---:|---:|---:|---:|---:|
+| 1018-00 | D0 | 0,195 | 1,73° | 0,132 | 0,21% | 1,60° |
+| 1018-00 | D1 | 0,215 | 1,77° | 0,132 | 0,14% | 1,65° |
+| 1018-00 | D3 | 0,213 | 1,75° | 0,130 | 0,14% | 1,38° |
+| 1018-00 | D4 (controle) | 0,197 | 1,62° | 0,115 | 0,13% | 1,57° |
+| 1018-13 | D0 | 0,250 | 3,06° | 1,827 | 2,50% | 11,40° |
+| 1018-13 | D1 | 0,215 | 1,83° | 0,648 | 1,89% | 3,98° |
+| 1018-13 | D3 | 0,214 | 1,83° | 0,642 | 1,83% | 3,94° |
+| 1018-13 | D4 (controle) | 0,185 | 1,69° | 0,608 | 1,58% | 3,43° |
+
+Fonte: Elaborada pelo autor (2026). Valores de D2 e D4′ e demais métricas em `docs/RESULTS_kissicp.md`.
+
+D1 e D3 satisfizeram todos os critérios de promoção no 1018-13, com reduções de 14% no RPE translacional, 40% no
+rotacional e 65% no ATE, mas aumentaram o RPE translacional (+10,0% e +8,9%) e o rotacional (+2,8% e +1,2%) no 1018-00.
+D2 não satisfez os critérios em nenhuma das sequências. Como o critério exige melhora nas duas sequências, nenhuma
+condição foi promovida, e a configuração sem compensação foi mantida.
+
+**Discussão — Q1.** Normalizado pela distância percorrida, o erro do 1018-13 é maior que o do 1018-00 (2,50% contra
+0,21% e 11,4°/100 m contra 1,6°/100 m; ATE nos primeiros 100 m de 0,58 m contra 0,15 m); portanto, o aumento do ATE não
+decorre apenas da maior extensão da trajetória. As janelas de 10 m com maior erro rotacional concentram-se em trechos
+de maior velocidade angular (mediana de 1,19° por varredura, contra 0,55° nas demais janelas) e de maior variação da
+velocidade angular entre varreduras, associação de intensidade moderada (coeficiente de Spearman entre 0,39 e 0,41).
+Quanto à estrutura geométrica (H3), os indicadores pré-registrados foram mistos: essas janelas possuem mais voxels
+ocupados e nuvens menos lineares, mas também maior planaridade, menor *fitness* do registro, maior erro residual e maior
+fração de pontos sem correspondência. Os indicadores geométricos não mostram redução inequívoca de estrutura, e os de
+registro indicam registro pior sem distinguir sua causa; H3 permaneceu, portanto, inconclusiva e não foi atribuída. A
+associação com a rotação é correlacional e não demonstra causa.
+
+**Discussão — Q2 e atribuição.** Os testes pré-registrados excluíram o não determinismo (H4) e a inversão do sentido do
+campo de tempo, pois D2 foi pior que D1. A reconstrução geométrica do tempo (D3) produziu resultados praticamente iguais
+aos de D1 (diferenças de no máximo 2,1%), de modo que um campo de tempo incorreto não explica materialmente o efeito (H2 não
+sustentada). H6 não foi sustentada, pois o controle D4 superou D0 no RPE rotacional e no ATE em ambas as sequências. H1
+não foi atribuída: embora D4 tenha melhorado o 1018-13, a melhora rotacional por quadro não se concentrou no quartil
+superior de velocidade angular, como exigia o padrão registrado. H5 apresentou compatibilidade apenas parcial: no
+1018-00, a piora rotacional de D1 e D3 cresceu com a variação da velocidade angular, enquanto D4 melhorou, mas D4 não
+superou D0 no erro translacional. A causa da degradação observada com a compensação no 1018-00 e no RELLIS-3D permanece,
+portanto, não identificada.
+
+Dois resultados não correspondem a nenhum padrão pré-registrado e são relatados sem interpretação causal. Primeiro,
+todas as condições com compensação, inclusive o controle por GT, aumentaram o RPE translacional por quadro (entre 21% e
+83%), ao mesmo tempo em que D4 reduziu o erro em 10 m, por 100 m e o ATE. Segundo, numa análise não pré-registrada,
+estratificada por janelas de 10 m, a melhora de D4 no 1018-13 cresceu com a velocidade angular (até −62% no quartil
+superior), padrão compatível com H1; por não ter sido definida antes dos resultados, essa observação constitui
+hipótese para investigação futura, não conclusão.
+
+**Resultados exploratórios no RELLIS-3D.** Sem GT, foram comparados o percurso e a regularidade das trajetórias. No
+trecho de 60 s, D1 e D3 percorreram 16% mais que D0, cujo percurso é próximo do indicado pela odometria das rodas; na
+sequência 00000, D1 a D3 percorreram de 4,2% a 4,7% mais que D0, sem referência independente para indicar a mais
+correta. Esses resultados não participaram da decisão.
+
+**Ameaças à validade.** A avaliação confirmatória restringe-se a duas sequências de um único ambiente e de um único
+sensor LiDAR (VLP-16). O controle D4 interpola GT de aproximadamente 10 Hz e deixa sem compensação as varreduras sem GT
+ao redor (167 no 1018-00 e 135 no 1018-13), o que limita sua fidelidade como compensação ideal. A medida de
+degenerescência baseou-se na forma global da nuvem e nos indicadores de registro, porque a interface do KISS-ICP não
+expõe as correspondências necessárias à matriz de informação; ademais, sem manipular a geometria, H3 poderia ser
+apenas declarada compatível, nunca demonstrada. O protocolo não fixou limiar numérico para a atribuição de causa, de
+modo que as comparações entre D3 e D1 foram relatadas por magnitude. Os resultados do 1018-13 mostram que a
+compensação pode reduzir substancialmente o erro em trechos de rotação intensa; a decisão de mantê-la desligada
+decorre do critério conjunto, e não de evidência de que a compensação seja prejudicial em todos os regimes.
+
+**Decisão.** O KISS-ICP permanece sem compensação temporal (D0) nos dois datasets. A causa da degradação com
+compensação (Q2) e o comportamento do erro por quadro sob compensação permanecem em aberto, e qualquer
+investigação adicional exigirá novo protocolo registrado antes das execuções.
+
+**Rastreabilidade.** Protocolo `docs/protocol_kissicp.md` (commit `c1b0b06`); implementação `14e9830`; fase 1
+`8564ca1`; registro operacional da fase 2 em `docs/RESULTS_kissicp.md`; análise em `ofd/kissicp_analysis.py` e
+`tools/kissicp_phase2.py`; artefatos em `data/analysis/kissicp/phase2/`.
+
 ## 4. Ameaças à validade
 
 ### 4.1 Validade do construto
@@ -414,8 +514,9 @@ indicadores, e nenhum dos resultados substitui a validação no robô real.
 
 Após a correção de QoS, o número de execuções do FAST-LIO2 variou conforme a sequência: três no BotanicGarden 1018-00 e
 três no trecho de 60 s do RELLIS-3D, com resultados idênticos entre si; quatro no BotanicGarden 1018-13 (a execução do
-pipeline e três repetições), também idênticas; e uma única execução no RELLIS-3D 00000. As odometrias visuais e o
-KISS-ICP foram executados uma vez em cada sequência, de modo que sua variabilidade entre execuções não foi estimada. O GT do RELLIS-3D não possui origem
+pipeline e três repetições), também idênticas; e uma única execução no RELLIS-3D 00000. O KISS-ICP foi executado três
+vezes por condição nas quatro sequências, com trajetórias idênticas bit a bit (seção 3.7). As odometrias visuais foram
+executadas uma vez em cada sequência, de modo que sua variabilidade entre execuções não foi estimada. O GT do RELLIS-3D não possui origem
 metrológica explicitada e pode ser correlacionado a métodos LiDAR; por isso, a avaliação principal permanece no
 BotanicGarden. Na sequência 00000, além disso, a associação entre poses e varreduras não pôde ser estabelecida de forma
 única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são
@@ -436,11 +537,11 @@ com cada fonte isolada e com estratégias de pesos fixos, conforme as hipóteses
 
 ## 6. Próximos experimentos
 
-1. Investigar o aumento do ATE do KISS-ICP no BotanicGarden 1018-13 (1,83 m, contra 0,13 m no 1018-00).
-2. Repetir as odometrias visuais e o KISS-ICP nas sequências completas para estimar a variabilidade entre execuções.
-3. Investigar a causa física da degradação do KISS-ICP com *deskew*, sem alterar a decisão experimental já sustentada
-   pelos resultados.
-4. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
+1. Repetir as odometrias visuais nas sequências completas para estimar a variabilidade entre execuções.
+2. Caso se decida prosseguir com a causa da degradação do KISS-ICP com *deskew*, registrar novo protocolo que trate o
+   aumento do erro por quadro sob compensação e a dependência, observada post hoc, entre o ganho da compensação e a
+   velocidade angular (seção 3.7).
+3. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
    \(\mathfrak{se}(3)\), ou ambas em estudo de ablação.
 
 ## Referências
@@ -470,7 +571,8 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
 ## Rastreabilidade dos resultados
 
 - Resultados numéricos e condições dos experimentos: `docs/RESULTS_smoke.md`.
-- Investigação do *deskew*: `docs/deskew_rellis.md`.
+- Investigação do *deskew*: `docs/deskew_rellis.md`; investigação pré-registrada do KISS-ICP:
+  `docs/protocol_kissicp.md`, `docs/RESULTS_kissicp.md`, `tools/kissicp_phase2.py`.
 - Associação do GT do RELLIS-3D (preliminar e sequência 00000): `docs/preflight_rellis.md`, `tools/rellis_assoc.py`,
   `data/analysis/rellis_assoc/result.json`.
 - Contrato de dados, decisões e riscos: `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md`.
