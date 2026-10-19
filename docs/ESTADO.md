@@ -47,11 +47,14 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 225 testes
    `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). Escalonamento revisado
    e aprovado em 19/10 (r4–r10 não são repetidas; sem limiar de carga). Fase 2 liberada em duas etapas: orquestrador
    da fase 2 implementado em 19/10 (`ofd/vo_repeat_phase2.py`, seção 11 do protocolo; validado só com dados
-   sintéticos, não executado). Revisão de 19/10: aprovação condicionada a dois ajustes, já feitos
-   (`longest_m` fora do RELLIS, emenda na seção 7; decisões desconhecidas rejeitadas). **Próximo passo: revisão curta
-   dos ajustes e liberação da execução** sobre r1–r10. Métricas de erro bloqueadas até lá.
+   sintéticos, não executado). Revisão de 19/10: aprovada após dois ajustes
+   (`longest_m` fora do RELLIS, emenda na seção 7; decisões desconhecidas rejeitadas), commit `eb90bfc`. Fase 2
+   executada em 19/10 (`data/analysis/vo_repeat/phase2`, `docs/RESULTS_vo_repeat.md`): 80/80 válidas, nenhuma métrica
+   aplicável indefinida; a execução oficial recalculada coincide com `data/output/metrics.csv` nas métricas
+   aplicáveis. No 1018-13/ORB-SLAM3 o ATE tem
+   dois grupos que acompanham a segmentação (ressalva da seção 7). Registro da fase 2 revisado e aprovado em 19/10.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
-4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-16).
+4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-19).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
