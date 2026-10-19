@@ -44,9 +44,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes
    validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, commit `084243d`). Fase 1 (r1–r3,
    `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis. Escalonamento r4–r10 concluído em
    16/10: 56/56 ok, 80/80 válidas; as 8 combinações seguem variáveis com dez execuções (análise em
-   `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). **Próximo passo: revisão
-   do escalonamento (commitado sem revisão externa, a pedido do usuário) e liberação da fase 2** (métricas de erro como
-   distribuição sobre r1–r10, seção 7 do protocolo). Fase 2 e métricas de erro bloqueadas até essa liberação.
+   `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). Escalonamento revisado
+   e aprovado em 19/10 (r4–r10 não são repetidas; sem limiar de carga). Fase 2 liberada em duas etapas: **próximo
+   passo: implementar o orquestrador/relatório da fase 2** (seção 7; integração de `ofd.evaluate`, `describe()` e
+   `indicator_medians()`, com testes sintéticos próprios) e submetê-lo à revisão; só então rodar sobre r1–r10. Métricas
+   de erro bloqueadas até essa segunda revisão.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
 4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-16).
 

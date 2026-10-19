@@ -81,3 +81,17 @@ e 1018-13/ORB-SLAM3 r7, todas entre 7,3 e 8,3), sem outro experimento em paralel
 
 **Decisão (seção 6):** as 8 combinações seguem variáveis com dez execuções. As métricas da fase 2 serão reportadas
 como distribuição sobre r1–r10 (estatísticas da seção 7). **A fase 2 não foi iniciada:** exige liberação separada.
+
+**Revisão — 19/10/2026.** Escalonamento aprovado. O revisor recalculou os 45 pares das oito combinações (máximos,
+medianas, contagens de A e limites de B/C coincidem com esta seção), conferiu os 56 registros r4–r10 (carga inicial
+2,82–8,27; razão relógio/sequência 1,017–1,134) e rodou os testes da implementação (70 aprovados). Carga da máquina:
+r4–r10 não são invalidadas nem repetidas, porque o protocolo não fixou limiar, todas as execuções ficaram abaixo de 8,3
+com 16 CPUs, sem outro experimento pesado, e parte da carga inicial é residual da execução anterior. A fase 2 não terá
+limiar de carga, pois opera só sobre as saídas r1–r10 já produzidas; a reprodutibilidade é controlada por hashes das
+entradas, commit, ambiente e testes, mantida a regra de não rodar outro experimento pesado em paralelo. Os três valores
+extremos (B máx. t de 00000/Stella, C máx. t de 00000/ORB-SLAM3 e de 1018-13/Stella) ficam só como descrição.
+
+**Liberação da fase 2, em duas etapas:** (1) implementar o orquestrador e o gerador de relatório da fase 2 — já existem
+componentes reutilizáveis e testados (`ofd.evaluate`, `describe()`, `indicator_medians()`), mas a integração ponta a
+ponta, a geração das tabelas da seção 7 e seus testes específicos precisam ser implementados e revisados antes da
+execução; (2) rodar sobre r1–r10 nas 8 combinações, com a execução oficial reportada à parte (seção 8).
