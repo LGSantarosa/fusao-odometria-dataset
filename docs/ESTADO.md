@@ -75,5 +75,11 @@ anotada `dataset-v1.0.0`. **Próxima frente:** pré-registrar o protocolo do mod
 baseline, normalização das 56 features, máscaras de validade, perda sobre `gt_vx … gt_wz`, métricas). Nenhum
 treinamento antes desse protocolo.
 
+## Modelo de fusão
+
+Protocolo pré-registrado em 19/10/2026 (`docs/protocol_fusion_model.md`), após duas rodadas de revisão; nada
+implementado ou treinado. **Próximo passo: revisão final do protocolo e liberação da fase 0** (implementação validada
+só com dados sintéticos). Implementação e treinamento bloqueados até lá.
+
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
