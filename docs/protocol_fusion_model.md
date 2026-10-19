@@ -223,3 +223,52 @@ secundárias, estratos, pesos) e no relato acadêmico.
   possa identificá-los.
 - O KISS-ICP é válido em quase todas as linhas; os estratos com 1–3 fontes válidas são pequenos (seção 2).
 - Modelos por passo não exploram dinâmica temporal além da variância móvel causal.
+
+## 14. Registro de implementação da fase 0 — 19/10/2026 (após a liberação, antes da fase 1)
+
+Esta seção registra a implementação liberada em 19/10/2026; não altera regras, grades nem estatísticas. Nenhum alvo
+real foi lido, nenhuma validação interna foi executada e nenhum modelo foi treinado com dados do dataset.
+
+- Ambiente: PyTorch 2.14.1 só CPU (`requirements.lock`, índice em `scripts/setup_env.sh`), redes em float64,
+  `torch.use_deterministic_algorithms(True)`; a semente fixa inicialização e embaralhamento.
+- `ofd/fusion_data.py` (seções 3–5): `FEATURES` (as 56 colunas `feature` do schema), `TARGET`, `target_rows`, `blocks`
+  (5 blocos, purga de 10), `Standardizer` (ddof = 0, `valid` binário, desvio zero → 1, coluna vazia →
+  `EmptyColumnError`, ausentes → 0), `target_sigma`, `method_twists`, `n_valid`.
+- `ofd/fusion_models.py` (seções 6–7): perda L em unidades físicas divididas por σ, retenção causal, B1–B5, ridge
+  com intercepto não penalizado (solução fechada), F1 (softmax mascarada) e F2, `train_nn` (Adam com
+  `weight_decay`, lr 1e-3, lotes de 64, sem parada antecipada), contagem de parâmetros.
+- `ofd/fusion_eval.py` (seções 7–9): integração (T̂₀ = I, primeiro twist = linha 1), métricas primárias, por
+  componente e secundárias (`ofd.evaluate.rpe`, `segment_metrics`, `aggregate_ate`), estratos, agregação da validação
+  interna (falha → perda infinita), escolha (empate L ≤ 1,01 L_min, depois simplicidade), épocas finais, regra de
+  decisão.
+- `ofd/fusion_run.py` (seções 4, 10–12): `phase1` recebe só a sequência de treino da dobra e grava `cv.csv` e
+  `selected.json`; `phase2` só aceita seleção congelada completa e grava `test_metrics.csv`, `stratified.csv`,
+  `weights_f1.csv`, `predictions/` e `decision.json` (F1 e, como comparação, F2); `rellis_inference` grava
+  `describe.csv` e `agreement.csv`, sem métricas de erro. CLI: `python -m ofd.fusion_run phase1 --fold A|B` e
+  `python -m ofd.fusion_run phase2`.
+- Validação sintética: `tests/test_fusion_data.py`, `tests/test_fusion_models.py`, `tests/test_fusion_eval.py`,
+  `tests/test_fusion_run.py` (43 testes; dados de `tests/fusion_synth.py`), cobrindo a lista da seção 12, item 1.
+  Suíte: 279 testes.
+- Custo medido em dado sintético do tamanho real (~1030 linhas de treino, 500 épocas): 10–14 s por treinamento;
+  a fase 1 tem 540 treinamentos por dobra (~1,7 h por dobra em série).
+- Pontos de interpretação para a revisão (escolhas de implementação onde o texto admite leituras diferentes):
+  1. Perda de validação de uma execução de rede = a menor perda de validação entre as épocas (a da melhor época,
+     que também define o número de épocas do modelo final).
+  2. Na validação interna, B1–B5 são calculados sobre a sequência de treino inteira e depois recortados no bloco de
+     validação: a retenção causal pode usar linhas anteriores ao bloco (só entradas, nunca o alvo).
+  3. Em F1, linhas sem nenhuma fonte válida ficam fora do gradiente (nenhum parâmetro as afeta); na predição, recebem
+     retenção causal. Nas sequências com GT não há linhas assim (seção 2).
+  4. "Decaimento de peso" = o `weight_decay` do Adam do PyTorch (penalidade L2 somada ao gradiente), não AdamW.
+  5. Empate exato entre odometrias isoladas na escolha de Bsel → a primeira na ordem ORB-SLAM3, Stella, FAST-LIO,
+     KISS-ICP.
+  6. A fase 2 recusa uma sequência de teste cujas linhas com GT não formem um único trecho contínuo (seção 8); as
+     duas sequências têm um único trecho.
+  7. Pesos de F1 reportados globalmente e por estrato; no RELLIS, além das descrições, a diferença RMS entre as
+     predições dos modelos das duas dobras (`agreement.csv`).
+- Revisão de 19/10/2026: as sete escolhas acima foram aceitas; três ajustes, todos com teste:
+  (a) perda de validação não finita marca a execução como falha (antes só lote e treino);
+  (b) as predições do RELLIS são gravadas em `phase2/rellis/predictions/<dobra>_<sequência>_<modelo>_s<semente>.parquet`
+  (com os pesos, em F1);
+  (c) `selected.json` registra `fold` e `train_sequence`, e a fase 2 (e a inferência no RELLIS) recusa seleção de
+  outra dobra, sequência de treino diferente da registrada ou sequência de teste igual à de treino.
+  Suíte: 281 testes.

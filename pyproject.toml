@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
   "numpy>=1.26", "scipy>=1.11", "pandas>=2.1", "pyarrow>=15",
   "open3d>=0.19", "rosbags>=0.10", "kiss-icp>=1.2", "opencv-python-headless>=4.9",
-  "pyyaml>=6", "matplotlib>=3.8", "gdown>=5.2",
+  "pyyaml>=6", "matplotlib>=3.8", "gdown>=5.2", "torch>=2.4",
 ]
 [project.optional-dependencies]
 dev = ["pytest>=8"]

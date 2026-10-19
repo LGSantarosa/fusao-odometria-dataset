@@ -1,6 +1,6 @@
 # Estado do projeto — 2026-10-19
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 236 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 281 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -77,9 +77,12 @@ treinamento antes desse protocolo.
 
 ## Modelo de fusão
 
-Protocolo pré-registrado em 19/10/2026 (`docs/protocol_fusion_model.md`), após duas rodadas de revisão; nada
-implementado ou treinado. **Próximo passo: revisão final do protocolo e liberação da fase 0** (implementação validada
-só com dados sintéticos). Implementação e treinamento bloqueados até lá.
+Protocolo pré-registrado em 19/10/2026 (`docs/protocol_fusion_model.md`, commit `44bc961`; `master` avançado por
+fast-forward até ele). Fase 0 liberada e implementada em 19/10 (`ofd/fusion_{data,models,eval,run}.py`, seção 14 do
+protocolo; PyTorch 2.14.1 CPU), validada só com dados sintéticos (45 testes). Nenhum alvo real lido, nada treinado
+no dataset. Revisão de 19/10: 7 pontos aceitos, 3 ajustes feitos
+(validação não finita = falha; predições do RELLIS gravadas; seleção amarrada à dobra e à sequência de treino).
+**Próximo passo: revisão curta da fase 0 e liberação da fase 1.**
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
