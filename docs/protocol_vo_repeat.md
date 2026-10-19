@@ -176,6 +176,13 @@ Valores ausentes e métricas indefinidas:
 Ressalva fixada agora: como cada execução é avaliada na própria cobertura, as métricas de erro de execuções diferentes
 não são pareadas; a dispersão do erro deve ser lida junto com a dispersão da cobertura e da segmentação.
 
+**Emenda — 19/10/2026 (revisão da implementação da fase 2, antes da execução).** No RELLIS-3D, o maior trecho
+contínuo é reportado apenas em segundos. O comprimento em metros (`longest_m`) é medido por `ofd.evaluate.coverage` com
+os passos do GT da tabela do dataset derivado, e o GT do RELLIS tem veredito C; por isso, ele é retirado do resumo, da
+tabela por execução e da execução oficial do RELLIS, e os passos do GT (`gt_dx`, `gt_dy`, `gt_dz`) não são lidos nessas
+sequências. Nas sequências do BotanicGarden, a regra acima não muda. A emenda foi fixada antes de qualquer execução da
+fase 2 e não depende de resultado.
+
 ## 8. Consequência para o dataset derivado
 
 As execuções oficiais existentes continuam sendo a fonte das colunas das VOs no dataset derivado: foram produzidas antes
@@ -244,3 +251,46 @@ repetição das VOs foi executada.
   a identidade bit a bit é decidida pelos hashes, não por C.
 - Verificação de integridade aplicada às execuções oficiais existentes (já conhecidas, sem métricas de erro): as oito
   são válidas, o que confirma que a regra da seção 5.1 não reprova saídas normais do executor.
+
+## 11. Registro de implementação da fase 2 — 19/10/2026 (após a liberação, antes da execução)
+
+Esta seção registra a primeira etapa da liberação de 19/10/2026 (`docs/RESULTS_vo_repeat.md`, revisão do
+escalonamento); não altera regras, limiares nem estatísticas, exceto pela emenda pré-execução registrada ao fim da
+seção 7. A fase 2 não foi executada: nenhum GT real foi lido e nenhuma métrica de erro foi calculada.
+
+- `ofd/vo_repeat_phase2.py`:
+  - plano (`phase2_plan`): a partir de `data/analysis/vo_repeat/phase1/decisions.json`, r1–r10 nas combinações
+    variáveis e só r1 nas determinísticas ou numericamente equivalentes (seção 6);
+  - por execução (`evaluate_run`): a cobertura na grade LiDAR usa a própria execução, amostrada por
+    `ofd.sync.method_deltas` com o `max_age_ms` da configuração do dataset (como em `ofd.build_dataset`), e
+    `ofd.evaluate.coverage` (cobertura, falhas, reinícios, maior trecho contínuo em s e m); com GT,
+    `ofd.evaluate.segment_metrics`/`aggregate_ate` (ATE agregado sobre os segmentos elegíveis, ≥ 30 s e ≥ 20 m),
+    `ofd.evaluate.rpe` (RPE 10 m translacional em m e rotacional em rad, unidade do pipeline), número de segmentos e
+    de segmentos elegíveis; e `indicator_medians` (mediana e fração ausente por indicador);
+  - por combinação (`evaluate_combination`): validade pela seção 5.1 e pelo registro externo, como na fase 1; a
+    execução inválida permanece na tabela, sem métricas;
+  - resumo (`summarize`, `success_rate`): estatística fixada por métrica (`describe`, seção 7), `n_defined` por
+    métrica, taxa de sucesso e códigos de saída;
+  - métricas de erro só em 1018-00 e 1018-13 (`CONFIRMATORY`); no RELLIS, `gt.tum` não é lido;
+  - decisões da fase 1 diferentes de `variable`, `deterministic` e `numerically_equivalent` são rejeitadas
+    (`phase2_plan`), para que um valor inválido não reduza a amostra a r1 sem aviso;
+  - a execução oficial (`data/runs/<seq>/<método>`) é avaliada com as mesmas funções e gravada em `official.csv`, fora
+    das estatísticas (seção 8);
+  - saídas: `<seq>_<método>_runs.csv`, `summary.csv`, `success.csv`, `official.csv`;
+  - uso: `python -m ofd.vo_repeat_phase2 --from-decisions data/analysis/vo_repeat/phase1/decisions.json
+    --out data/analysis/vo_repeat/phase2`.
+- Validação sintética: `tests/test_vo_repeat_phase2.py` (trajetória perfeita; execução sem GT; métricas indefinidas
+  sem suporte; falha e reinício; execução inválida mantida no denominador; estatísticas com menos de duas
+  observações e sem nenhuma; combinação toda inválida; oficial fora das estatísticas; RELLIS sem `gt.tum`; plano e
+  configurações).
+- Pontos levados à revisão (decididos em 19/10/2026, abaixo):
+  1. Maior trecho contínuo em metros: `ofd.evaluate.coverage` mede o comprimento pelos passos do GT da tabela do
+     dataset derivado (`gt_dx`, `gt_dy`, `gt_dz`). No RELLIS esses passos vêm do GT com veredito C. A implementação
+     segue o pipeline; a alternativa é reportar no RELLIS só o trecho em segundos.
+  2. A grade LiDAR e os passos do GT vêm de `data/output/<seq>.parquet` (só as colunas `t`, `gt_dx`, `gt_dy`,
+     `gt_dz`, que não dependem das VOs).
+  3. Número de segmentos e de segmentos elegíveis só com GT, como em `ofd.evaluate`; no RELLIS, a seção 7 não os
+     lista.
+- Revisão de 19/10/2026: aprovação condicionada a dois ajustes, ambos implementados com teste antes da execução:
+  (a) ponto 1 — `longest_m` retirado do RELLIS (emenda na seção 7); os pontos 2 e 3 ficam como implementados;
+  (b) `phase2_plan` rejeita decisões desconhecidas. Suíte: 225 testes.

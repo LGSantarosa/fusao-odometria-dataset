@@ -1,6 +1,6 @@
-# Estado do projeto — 2026-10-16
+# Estado do projeto — 2026-10-19
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 225 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -45,10 +45,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 211 testes
    `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis. Escalonamento r4–r10 concluído em
    16/10: 56/56 ok, 80/80 válidas; as 8 combinações seguem variáveis com dez execuções (análise em
    `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). Escalonamento revisado
-   e aprovado em 19/10 (r4–r10 não são repetidas; sem limiar de carga). Fase 2 liberada em duas etapas: **próximo
-   passo: implementar o orquestrador/relatório da fase 2** (seção 7; integração de `ofd.evaluate`, `describe()` e
-   `indicator_medians()`, com testes sintéticos próprios) e submetê-lo à revisão; só então rodar sobre r1–r10. Métricas
-   de erro bloqueadas até essa segunda revisão.
+   e aprovado em 19/10 (r4–r10 não são repetidas; sem limiar de carga). Fase 2 liberada em duas etapas: orquestrador
+   da fase 2 implementado em 19/10 (`ofd/vo_repeat_phase2.py`, seção 11 do protocolo; validado só com dados
+   sintéticos, não executado). Revisão de 19/10: aprovação condicionada a dois ajustes, já feitos
+   (`longest_m` fora do RELLIS, emenda na seção 7; decisões desconhecidas rejeitadas). **Próximo passo: revisão curta
+   dos ajustes e liberação da execução** sobre r1–r10. Métricas de erro bloqueadas até lá.
 3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
 4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-16).
 
