@@ -18,6 +18,8 @@ do caminho do GT na sequência, limitado a 1 (`ofd/evaluate.py:131`); não é fr
 
 ## BotanicGarden 1018-00 (GT do scanner Leica, `gt_quality: survey`)
 - Tabela: 1466 passos × 121 colunas (84 feature, 13 target, 8 evaluation, 16 metadata); 1299 passos com GT.
+  Desde 19/10/2026 (representação em se(3)), os papéis são 56 feature, 6 target, 15 evaluation e 44 metadata; as
+  colunas e os valores não mudaram.
 - Câmeras só cobrem ~96 s dos 147,8 s → cobertura das VOs 65%. IMU Xsens só cobre +12,3..+127,6 s → FAST-LIO
   não estima fora disso (323 scans).
 - FAST-LIO validado: 3 execuções, 1141/1143 scans com IMU (99,83%) em todas, 0 divergências; faltam só os 2
@@ -37,4 +39,5 @@ do caminho do GT na sequência, limitado a 1 (`ofd/evaluate.py:131`); não é fr
 - RELLIS 00000 (23 GB) liberado pelo veredito B; verificar contagem de scans == 2847 linhas do `poses.txt`.
 - BotanicGarden 1018-13 (próxima sequência com GT).
 - Causa do deskew piorar o KISS-ICP.
-- Pergunta ao Edvaldo: representação consumida pelo modelo (ΔT+dt+age ou velocidade se(3)) — ambas estão na tabela.
+- ~~Pergunta ao Edvaldo: representação consumida pelo modelo (ΔT+dt+age ou velocidade se(3)) — ambas estão na
+  tabela.~~ Decidido em 19/10/2026: velocidade em se(3) (`docs/ESTADO.md`, spec §6).

@@ -115,8 +115,14 @@ idade da estimativa no instante da grade. Também é calculada a velocidade incr
 \]
 
 Essa representação permite comparar fontes assíncronas sem assumir que todos os incrementos cobrem o mesmo período. A
-decisão entre utilizar \(\Delta T + \Delta t + age\) ou a velocidade em \(\mathfrak{se}(3)\) como entrada definitiva do
-modelo permanece dependente da arquitetura de fusão.
+velocidade em \(\mathfrak{se}(3)\) foi adotada como entrada do modelo, acompanhada de \(\Delta t\), da idade da
+estimativa, do indicador de validade e dos indicadores de qualidade; o rótulo correspondente é a velocidade do GT no
+mesmo grupo. A escolha decorre de dois fatores: os intervalos cobertos variam entre fontes (de 100 a 133 ms), e a
+velocidade já é expressa em m/s e rad/s, na unidade do rótulo; além disso, ela tem seis componentes livres, sem a
+restrição de norma unitária e a ambiguidade de sinal do quatérnio. O incremento rígido permanece na tabela, como
+metadado nas odometrias (auditoria) e como coluna de avaliação no GT. Como limitação, a divisão por \(\Delta t\)
+amplifica o ruído quando o intervalo é curto e pressupõe velocidade constante dentro dele; a presença de \(\Delta t\)
+entre as entradas permite ao modelo identificar esses casos.
 
 ### 2.5 Indicadores de qualidade
 

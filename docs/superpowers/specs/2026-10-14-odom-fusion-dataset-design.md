@@ -87,7 +87,13 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
   Por isso o dataset inclui, além do ΔT bruto, `m_dt_ms` e `m_age_ms` **como features**, e a **velocidade
   incremental** `m_v = log(ΔT) / dt` em se(3) (`m_vx, m_vy, m_vz, m_wx, m_wy, m_wz`, em m/s e rad/s), que é
   comparável entre métodos independentemente de dt. O GT ganha a mesma velocidade (`gt_vx … gt_wz`) como
-  target. **A confirmar com o Edvaldo** qual representação o modelo consumirá (ΔT + dt + age, ou velocidade).
+  target. ~~A confirmar com o Edvaldo qual representação o modelo consumirá (ΔT + dt + age, ou velocidade).~~
+  **Decidido em 19/10/2026:** o modelo consome a **velocidade em se(3)**, com `m_dt_ms`, `m_age_ms`,
+  `m_valid` e os indicadores como features; o alvo é `gt_vx … gt_wz`. O ΔT continua na tabela: o dos
+  métodos como metadata (auditoria) e o do GT como evaluation. Motivos: intervalos de 100–133 ms entre fontes
+  (o twist já sai em m/s e rad/s, na unidade do alvo); 6 componentes livres, sem a restrição de norma e a
+  ambiguidade q/−q do quatérnio. Limitação: a divisão por dt amplifica o ruído quando dt é pequeno e assume
+  velocidade constante no intervalo; `m_dt_ms` como feature permite ao modelo identificar esses casos.
 - **GT na grade:** o GT é rótulo (não entra no modelo), então **pode** ser interpolado (linear + SLERP) entre
   poses vizinhas. `gt_d*` = ΔT do GT entre t_{k−1} e t_k. Para `m_err_t/m_err_r`, o GT é interpolado nos
   **mesmos instantes de origem do método** (src_ts(k−1), src_ts(k)), para comparar intervalos idênticos.
@@ -135,12 +141,13 @@ Uma linha por passo k. Cada coluna tem um **papel** declarado em `schema.json`:
 | `m_src_ts`, `m_segment_id`, `m_uses_imu` | metadata |
 | `m_dt_ms`, `m_age_ms` | feature |
 | `m_vx, m_vy, m_vz, m_wx, m_wy, m_wz` (velocidade se(3) do ΔT) | feature |
-| `m_dx, m_dy, m_dz, m_qx, m_qy, m_qz, m_qw` (ΔT do método) | feature |
+| `m_dx, m_dy, m_dz, m_qx, m_qy, m_qz, m_qw` (ΔT do método) | metadata (até 19/10/2026: feature) |
 | `m_valid` | feature |
 | VO: `m_inliers`, `m_n_features`, `m_reproj_err`, `m_tracked_ratio` | feature |
 | LO/LIO: `m_fitness`, `m_inlier_rmse`, `m_unmatched_ratio`, `m_n_points` | feature |
 | `m_fitness_var_H`, `m_reproj_err_var_H` (variância móvel **causal**, janela H só de passado) | feature |
-| `gt_dx … gt_qw` (ΔT do GT), `gt_vx … gt_wz` | **target** |
+| `gt_vx … gt_wz` (velocidade se(3) do GT) | **target** |
+| `gt_dx … gt_qw` (ΔT do GT) | evaluation (até 19/10/2026: target) |
 | `m_err_t`, `m_err_r` (erro do ΔT do método vs GT) | **evaluation** — nunca entrada do modelo |
 
 `unmatched_ratio` (antes "dinamicidade"): fração de pontos do scan k sem correspondência no scan k-1 após o

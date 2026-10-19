@@ -9,11 +9,14 @@ VAR_OF = {"vo": "reproj_err", "lo": "fitness"}
 
 def build_schema(methods):
     s = {c: "metadata" for c in ["t", "seq", "dataset", "gt_quality"]}
-    s.update({f"gt_{c}": "target" for c in VEC + TW})
+    # Representação decidida em 19/10/2026: o modelo consome a velocidade em se(3) (TW) com dt e age; o ΔT (VEC)
+    # fica na tabela para auditoria (métodos) e avaliação (GT).
+    s.update({f"gt_{c}": "evaluation" for c in VEC})
+    s.update({f"gt_{c}": "target" for c in TW})
     for m, kind in methods.items():
-        for c in ["src_ts", "segment_id", "uses_imu"]:
+        for c in ["src_ts", "segment_id", "uses_imu"] + VEC:
             s[f"{m}_{c}"] = "metadata"
-        for c in VEC + TW + ["valid", "dt_ms", "age_ms"]:
+        for c in TW + ["valid", "dt_ms", "age_ms"]:
             s[f"{m}_{c}"] = "feature"
         for c in (VO_IND if kind == "vo" else LO_IND):
             s[f"{m}_{c}"] = "feature"

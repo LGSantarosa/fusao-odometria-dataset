@@ -1,6 +1,6 @@
 # Estado do projeto — 2026-10-19
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 225 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 227 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -53,7 +53,11 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 225 testes
    aplicável indefinida; a execução oficial recalculada coincide com `data/output/metrics.csv` nas métricas
    aplicáveis. No 1018-13/ORB-SLAM3 o ATE tem
    dois grupos que acompanham a segmentação (ressalva da seção 7). Registro da fase 2 revisado e aprovado em 19/10.
-3. Perguntar ao Edvaldo qual representação o modelo consome (ΔT+dt+age ou velocidade se(3)).
+3. Representação das entradas decidida em 19/10/2026: **velocidade em se(3)** (`m_vx … m_wz`) com `dt_ms`, `age_ms`,
+   `valid` e indicadores como features; alvo `gt_vx … gt_wz`. O ΔT fica na tabela (métodos: metadata; GT:
+   evaluation). Papéis: 56 feature, 6 target, 15 evaluation, 44 metadata (`ofd/schema.py`; `data/output/schema.json`
+   regenerado, Parquets/CSVs inalterados). Limitação: divisão por dt amplifica ruído com dt pequeno; dt_ms como feature
+   permite ao modelo identificá-lo. Spec §5–6 e relato §2.4 atualizados.
 4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-19).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,

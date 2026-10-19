@@ -51,4 +51,4 @@ def test_write_outputs(tmp_path):
     s = schema.build_schema(schema.METHODS)
     build_dataset.write_outputs(df, s, tmp_path / "out", "seqA")
     assert (tmp_path / "out" / "seqA.parquet").exists()
-    assert json.loads((tmp_path / "out" / "schema.json").read_text())["gt_dx"] == "target"
+    assert json.loads((tmp_path / "out" / "schema.json").read_text())["gt_dx"] == "evaluation"
