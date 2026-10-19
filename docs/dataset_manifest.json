@@ -1,0 +1,118 @@
+{
+  "commit": "1d9a555",
+  "schema": {
+    "sha256": "696acd40dec8852ca73c096a6f4231ceb32bf37b025e9c14bc758381317af094",
+    "columns": 121,
+    "roles": {
+      "evaluation": 15,
+      "feature": 56,
+      "metadata": 44,
+      "target": 6
+    },
+    "matches_code": true
+  },
+  "sequences": [
+    {
+      "seq": "00000",
+      "dataset": "rellis",
+      "rows": 2849,
+      "t_first_ns": 1581624652670700800,
+      "t_last_ns": 1581624937462571008,
+      "csv_matches_parquet": true
+    },
+    {
+      "seq": "1018-00",
+      "dataset": "botanic",
+      "rows": 1466,
+      "t_first_ns": 1666059817634835368,
+      "t_last_ns": 1666059965395011368,
+      "csv_matches_parquet": true
+    },
+    {
+      "seq": "1018-13",
+      "dataset": "botanic",
+      "rows": 2071,
+      "t_first_ns": 1666066344578279368,
+      "t_last_ns": 1666066553359107368,
+      "csv_matches_parquet": true
+    },
+    {
+      "seq": "rellis_example",
+      "dataset": "rellis",
+      "rows": 599,
+      "t_first_ns": 1581791678333751296,
+      "t_last_ns": 1581791738132674048,
+      "csv_matches_parquet": true
+    }
+  ],
+  "files": [
+    {
+      "path": "00000.csv",
+      "bytes": 4399598,
+      "sha256": "740745839d2365c8f0381079d760ef811bb9235fb483a8d9657f0cae9de7c38e",
+      "rows": 2849,
+      "columns": 121
+    },
+    {
+      "path": "00000.parquet",
+      "bytes": 1986075,
+      "sha256": "c5a50829a32fba34048d2f296b62f2d512c083c07d675fb1705632b64d8d20b9",
+      "rows": 2849,
+      "columns": 121
+    },
+    {
+      "path": "1018-00.csv",
+      "bytes": 2460632,
+      "sha256": "539cb16e1b9822a42cc0912ecf2cf96b2aa90fbf463eb6ef4324a37a3fd42031",
+      "rows": 1466,
+      "columns": 121
+    },
+    {
+      "path": "1018-00.parquet",
+      "bytes": 1104021,
+      "sha256": "8861de8227ee8cf96b410a72e86d3ed27b96a209a6484d19f145a46c9064512a",
+      "rows": 1466,
+      "columns": 121
+    },
+    {
+      "path": "1018-13.csv",
+      "bytes": 3733202,
+      "sha256": "7e9346bac53bd35f46372bb2630d71873d4ddf177de533e12f7b6c8acbaaa635",
+      "rows": 2071,
+      "columns": 121
+    },
+    {
+      "path": "1018-13.parquet",
+      "bytes": 1672262,
+      "sha256": "18fcfb05ba50ea24525eb3033f64fafbe1fb11a336b75f9262f27f6f3d45262a",
+      "rows": 2071,
+      "columns": 121
+    },
+    {
+      "path": "metrics.csv",
+      "bytes": 2312,
+      "sha256": "3dca8263e28494e27b0d4c0adda01982e72880e7733e189fd0818cab47ac59bb",
+      "rows": 16,
+      "columns": 16
+    },
+    {
+      "path": "rellis_example.csv",
+      "bytes": 925870,
+      "sha256": "a1faf55d35712c671ab8f068b0ee1aa394dbfc9053cc762d3ec6d84333230de8",
+      "rows": 599,
+      "columns": 121
+    },
+    {
+      "path": "rellis_example.parquet",
+      "bytes": 460754,
+      "sha256": "4097f9602b4162c8972e26e5b062a60f8d9538b4f915594b074a33751e8c1265",
+      "rows": 599,
+      "columns": 121
+    },
+    {
+      "path": "schema.json",
+      "bytes": 3584,
+      "sha256": "696acd40dec8852ca73c096a6f4231ceb32bf37b025e9c14bc758381317af094"
+    }
+  ]
+}

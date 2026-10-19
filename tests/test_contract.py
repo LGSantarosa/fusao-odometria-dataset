@@ -28,3 +28,10 @@ def test_contract_catches_negative_qw(tmp_path):
     df.loc[k, "stella_qw"] = -0.5
     with pytest.raises(AssertionError, match="qw"):
         contract.check(df, schema.build_schema(schema.METHODS))
+
+
+def test_contract_checks_sequence_identity(tmp_path):
+    df = built(tmp_path)
+    contract.check(df, schema.build_schema(schema.METHODS), seq=df["seq"].iat[0])
+    with pytest.raises(AssertionError, match="seq"):
+        contract.check(df, schema.build_schema(schema.METHODS), seq="00000")

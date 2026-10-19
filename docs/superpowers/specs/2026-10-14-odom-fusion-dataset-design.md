@@ -127,7 +127,9 @@ Cada unidade lê/escreve arquivos em `data/` — dá para reexecutar uma etapa i
 3. **align**: segmentação por método (`segment_id` incrementa a cada perda/reinicialização de tracking ou
    troca de mapa), conversão para o frame do LiDAR, reamostragem na grade (regras da §4), ΔT.
    **Toda transição entre segmentos é inválida**: o ΔT que cruza segmentos tem `m_valid=0`.
-4. **build_dataset**: `data/output/<seq>.parquet` (+ `.csv`) e `data/output/schema.json`.
+4. **build_dataset**: `data/output/<seq>.parquet` (+ `.csv`) e `data/output/schema.json`. O Parquet é o formato
+   canônico; o CSV deve ser lido com `dtype=ofd.schema.CSV_DTYPE` (`seq` como texto: "00000" vira 0 na leitura
+   padrão do pandas). Manifesto dos artefatos: `docs/dataset_manifest.json` (`python -m tools.dataset_manifest`).
 5. **evaluate**: `data/output/metrics.csv` + plots.
 
 ## 6. Schema da tabela final

@@ -5,6 +5,8 @@ TW = ["vx", "vy", "vz", "wx", "wy", "wz"]
 VO_IND = ["inliers", "n_features", "reproj_err", "tracked_ratio"]
 LO_IND = ["fitness", "inlier_rmse", "unmatched_ratio", "n_points"]
 VAR_OF = {"vo": "reproj_err", "lo": "fitness"}
+# O Parquet é o formato canônico. O CSV deve ser lido com este dtype: sem ele, o pandas lê seq "00000" como 0.
+CSV_DTYPE = {"seq": "string"}
 
 
 def build_schema(methods):

@@ -43,3 +43,7 @@ def test_leak_detection():
     s = schema.build_schema(schema.METHODS); s["gt_qw"] = "feature"
     with pytest.raises(ValueError):
         schema.assert_no_leak(s)
+
+
+def test_csv_dtype_keeps_identifier_columns_as_text():
+    assert schema.CSV_DTYPE == {"seq": "string"}

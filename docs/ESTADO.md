@@ -1,6 +1,6 @@
 # Estado do projeto — 2026-10-19
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 227 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 236 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -32,33 +32,48 @@ Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 227 testes
 - `data/raw/rellis/example/example_filtered.bag`, `poses/` (poses.txt das 5 sequências).
 - `data/raw/botanic/1018_13_VLIO.bag` (9,45 GB; GT em `GT_pose_qnew/GT_pose_qnew/gt_1018_13_qnew.bag`).
 - `data/raw/rellis/00000/20200213_trail_2.bag` (42,5 GB) + zip original.
-- Saídas: `data/output/*.parquet|csv`, `schema.json`, `metrics.csv`; análise da associação em `data/analysis/rellis_assoc/`.
+- Saídas: `data/output/*.parquet|csv`, `schema.json`, `metrics.csv` (manifesto em `docs/dataset_manifest.json`);
+  análise da associação em `data/analysis/rellis_assoc/`.
 
-## Próximos passos
-1. Investigação do KISS-ICP concluída (fases 1 e 2; `docs/RESULTS_kissicp.md`, relato §3.7). Fase 2 (16/10, só r1,
-   métricas pareadas no suporte comum de GT, `tools/kissicp_phase2.py`): **nenhuma candidata promovida, D0 mantida**
-   (D1/D3 passam no 1018-13 e falham no RPE do 1018-00). Q1: erro do 1018-13 associado a trechos de rotação rápida;
-   H3 inconclusiva/não atribuída (proxies de estrutura mistos). Q2: causa não identificada (H2, H4, H6 não sustentadas; H1 não atribuída
-   pelo teste pré-registrado; H5 parcial). Em aberto: piora do RPE por quadro sob qualquer compensação, inclusive D4.
-2. Repetições das VOs: protocolo pré-registrado (`docs/protocol_vo_repeat.md`, commit `e682f15`); implementação
-   validada só com dados sintéticos (`ofd/vo_repeat.py`, `ofd/run_vo_repeat.py`, commit `084243d`). Fase 1 (r1–r3,
-   `docs/RESULTS_vo_repeat.md`): 24/24 válidas; as 8 combinações são variáveis. Escalonamento r4–r10 concluído em
-   16/10: 56/56 ok, 80/80 válidas; as 8 combinações seguem variáveis com dez execuções (análise em
-   `data/analysis/vo_repeat/phase1_escalated`; A diverge só no ORB-SLAM3 em 1018-13 e 00000). Escalonamento revisado
-   e aprovado em 19/10 (r4–r10 não são repetidas; sem limiar de carga). Fase 2 liberada em duas etapas: orquestrador
-   da fase 2 implementado em 19/10 (`ofd/vo_repeat_phase2.py`, seção 11 do protocolo; validado só com dados
-   sintéticos, não executado). Revisão de 19/10: aprovada após dois ajustes
-   (`longest_m` fora do RELLIS, emenda na seção 7; decisões desconhecidas rejeitadas), commit `eb90bfc`. Fase 2
-   executada em 19/10 (`data/analysis/vo_repeat/phase2`, `docs/RESULTS_vo_repeat.md`): 80/80 válidas, nenhuma métrica
-   aplicável indefinida; a execução oficial recalculada coincide com `data/output/metrics.csv` nas métricas
-   aplicáveis. No 1018-13/ORB-SLAM3 o ATE tem
-   dois grupos que acompanham a segmentação (ressalva da seção 7). Registro da fase 2 revisado e aprovado em 19/10.
-3. Representação das entradas decidida em 19/10/2026: **velocidade em se(3)** (`m_vx … m_wz`) com `dt_ms`, `age_ms`,
-   `valid` e indicadores como features; alvo `gt_vx … gt_wz`. O ΔT fica na tabela (métodos: metadata; GT:
-   evaluation). Papéis: 56 feature, 6 target, 15 evaluation, 44 metadata (`ofd/schema.py`; `data/output/schema.json`
-   regenerado, Parquets/CSVs inalterados). Limitação: divisão por dt amplifica ruído com dt pequeno; dt_ms como feature
-   permite ao modelo identificá-lo. Spec §5–6 e relato §2.4 atualizados.
-4. Push do branch a cada etapa revisada (remoto sincronizado em 2026-10-19).
+## Fechamento do marco do dataset — 19/10/2026
+
+O dataset derivado está concluído no commit `1d9a555` (schema com velocidade em se(3)). Auditoria final em 19/10:
+
+- suíte completa: 236 testes passando com `-W error` (`scripts/test.sh -q -W error`);
+- contrato (`ofd.contract.check`, agora com a identidade da sequência) nas quatro sequências reais: 1018-00
+  (1466 × 121), 1018-13 (2071 × 121), rellis_example (599 × 121) e 00000 (2849 × 121); o teste do contrato real
+  (`tests/test_pipeline_contract.py`) exige exatamente essas quatro, em vez de aceitar o que o glob encontrar;
+- **formato canônico: Parquet.** O CSV é cópia de conveniência e deve ser lido com
+  `pd.read_csv(..., dtype=ofd.schema.CSV_DTYPE)` (`{"seq": "string"}`): na leitura padrão, o pandas transforma
+  `seq` "00000" em 0. Com a leitura tipada, os quatro CSVs coincidem com os Parquets (registrado no manifesto;
+  ponto flutuante com tolerância relativa de 1e-12, inteiros — inclusive timestamps em ns — e booleanos exatos);
+- `data/output/schema.json` coincide com `ofd.schema.build_schema`: 56 feature, 6 target, 15 evaluation, 44 metadata;
+- árvore limpa e `HEAD` = `origin/feat/dataset-pipeline`; `master` (`c0df2b1`) não tem commits próprios.
+
+**Manifesto dos artefatos locais:** `docs/dataset_manifest.json` (versionado; os dados continuam fora do git), gerado
+por `python -m tools.dataset_manifest` e conferido com `python -m tools.dataset_manifest --check`. Registra, para os 10
+arquivos de `data/output/`, caminho, bytes, SHA-256 e dimensões; por sequência, linhas, intervalo de `t` e a
+equivalência CSV × Parquet com a leitura tipada; e a versão do schema (SHA-256, papéis, coincidência com o código). Sem
+data/hora: a mesma saída gera o mesmo manifesto. Bags brutos e execuções intermediárias ficam fora (os bags têm md5
+registrado na seção acima): o manifesto cobre os artefatos derivados entregáveis, escopo aprovado na revisão de 19/10.
+
+Resultado das frentes do marco:
+
+1. KISS-ICP (`docs/protocol_kissicp.md`, `docs/RESULTS_kissicp.md`, relato §3.7): nenhuma candidata promovida, D0
+   (`deskew=False`) mantida. Q1: erro do 1018-13 associado a rotação rápida; Q2 sem causa identificada. Em aberto,
+   sem bloquear o dataset: piora do RPE por quadro sob qualquer compensação, inclusive D4 (exige novo protocolo).
+2. Repetibilidade das VOs (`docs/protocol_vo_repeat.md`, `docs/RESULTS_vo_repeat.md`): as 8 combinações são variáveis;
+   fase 2 sobre r1–r10 com 80/80 execuções válidas (`2480344`). As colunas das VOs no dataset seguem vindo das execuções
+   oficiais (seção 8 do protocolo); a variabilidade fica documentada como distribuição.
+3. Representação das entradas (`1d9a555`): velocidade em se(3) (`m_vx … m_wz`) com `dt_ms`, `age_ms`, `valid` e
+   indicadores como features; alvo `gt_vx … gt_wz`; ΔT como metadata (métodos) e evaluation (GT). Limitação: a divisão
+   por dt amplifica ruído com dt pequeno; `dt_ms` como feature permite ao modelo identificá-lo.
+
+**Integração:** fechamento revisado e aprovado em 19/10 (após corrigir a leitura do CSV de 00000 e a comparação exata
+de inteiros no manifesto). O commit deste fechamento foi integrado em `master` por fast-forward e marcado com a tag
+anotada `dataset-v1.0.0`. **Próxima frente:** pré-registrar o protocolo do modelo de fusão (splits por sequência,
+baseline, normalização das 56 features, máscaras de validade, perda sobre `gt_vx … gt_wz`, métricas). Nenhum
+treinamento antes desse protocolo.
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.

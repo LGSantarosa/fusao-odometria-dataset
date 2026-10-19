@@ -4,8 +4,10 @@ import numpy as np
 from ofd import schema as sch
 
 
-def check(df, schema, max_age_ms=100.0):
+def check(df, schema, max_age_ms=100.0, seq=None):
     assert list(df.columns) == list(schema), "colunas diferentes do schema"
+    if seq is not None:
+        assert (df["seq"].astype(str) == seq).all(), f"seq diferente de {seq!r}"
     sch.assert_no_leak(schema)
     t = df["t"].to_numpy(np.int64)
     assert np.all(np.diff(t) > 0), "t não é estritamente crescente"
