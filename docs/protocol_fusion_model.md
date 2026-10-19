@@ -272,3 +272,8 @@ real foi lido, nenhuma validação interna foi executada e nenhum modelo foi tre
   (c) `selected.json` registra `fold` e `train_sequence`, e a fase 2 (e a inferência no RELLIS) recusa seleção de
   outra dobra, sequência de treino diferente da registrada ou sequência de teste igual à de treino.
   Suíte: 281 testes.
+- Fase 1 executada em 19/10/2026 com `3c34457` e **invalidada** (`docs/RESULTS_fusion_model.md`): linhas com o
+  método inválido não recebiam 0 em `dt_ms`, `age_ms` e na variância móvel, que no dataset trazem valores antigos
+  (seção 5 violada). Correção em `Standardizer.transform`, com teste; artefatos preservados em
+  `data/analysis/fusion/phase1_invalid_3c34457/`. Lacuna registrada para decisão: colunas quase constantes no treino
+  (escala positiva, mas muito pequena) produzem valores padronizados extremos, e a seção 5 só trata desvio zero.

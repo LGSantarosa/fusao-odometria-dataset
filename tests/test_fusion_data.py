@@ -86,3 +86,19 @@ def test_method_twists_and_valid_mask():
 def test_n_valid_counts_sources_per_row():
     df = synth_sequence(6, invalid_every={"orbslam3": 2, "stella": 3})
     assert list(fd.n_valid(df)) == [2, 4, 3, 3, 3, 4]
+
+
+def test_invalid_method_rows_are_imputed_even_when_raw_values_exist():
+    """No dataset real, linhas inválidas ainda trazem dt_ms, age_ms e a variância móvel (valores antigos); a seção 5
+    manda imputar 0 em todas as entradas do método inválido, exceto `valid`."""
+    df = synth_sequence(60, invalid_every={"fastlio": 3})
+    bad = df["fastlio_valid"] == 0
+    df.loc[bad, "fastlio_dt_ms"] = 20_000.0                              # idade/intervalo antigos e enormes
+    df.loc[bad, "fastlio_age_ms"] = 19_000.0
+    df.loc[bad, "fastlio_fitness_var_H"] = 5.0
+    st = fd.Standardizer().fit(df)
+    X = st.transform(df)
+    cols = [j for j, c in enumerate(fd.FEATURES) if c.startswith("fastlio_") and c != "fastlio_valid"]
+    assert (X[np.ix_(bad.to_numpy(), cols)] == 0).all()
+    assert (X[bad.to_numpy(), fd.FEATURES.index("fastlio_valid")] == 0).all()
+    assert np.abs(X).max() < 50

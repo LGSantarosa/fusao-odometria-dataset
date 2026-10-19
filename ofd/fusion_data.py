@@ -62,12 +62,17 @@ class Standardizer:
         return self
 
     def transform(self, df):
+        """Linhas com o método inválido recebem 0 em todas as entradas dele, exceto `valid`, mesmo quando o dataset
+        traz valores antigos ali (`dt_ms`, `age_ms`, variância móvel)."""
         X = np.empty((len(df), len(FEATURES)))
         for j, c in enumerate(FEATURES):
             if c.endswith("_valid"):
                 X[:, j] = df[c].to_numpy(float)
-            else:
-                X[:, j] = (df[c].to_numpy(float) - self.mean[c]) / self.scale[c]
+                continue
+            X[:, j] = (df[c].to_numpy(float) - self.mean[c]) / self.scale[c]
+            m = _method_of(c)
+            if m:
+                X[df[f"{m}_valid"].to_numpy() != 1, j] = np.nan
         return np.nan_to_num(X, nan=0.0)
 
 
