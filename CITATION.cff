@@ -1,0 +1,41 @@
+# RASCUNHO — autoria, título, licença e DOI PENDENTES (decisão do professor/equipe).
+cff-version: 1.2.0
+message: "Se usar este dataset, cite-o como abaixo e cite também os datasets de origem (BotanicGarden e RELLIS-3D)."
+type: dataset
+title: "odom-fusion-dataset: PENDENTE — título definitivo"
+version: "1.0.0"
+date-released: "PENDENTE"
+authors:
+  - name: "PENDENTE — lista e ordem de autores (professor/equipe)"
+license: "PENDENTE"
+repository-code: "PENDENTE — URL do repositório institucional"
+url: "PENDENTE — link de download (OneDrive da PUC)"
+references:
+  - type: article
+    title: "BotanicGarden: A High-Quality Dataset for Robot Navigation in Unstructured Natural Environments"
+    authors:
+      - family-names: Liu
+        given-names: Yuanzhi
+      - name: "et al."
+    journal: "IEEE Robotics and Automation Letters"
+    volume: 9
+    issue: 3
+    start: 2798
+    end: 2805
+    year: 2024
+    doi: "10.1109/LRA.2024.3359548"
+  - type: article
+    title: "RELLIS-3D Dataset: Data, Benchmarks and Analysis"
+    authors:
+      - family-names: Jiang
+        given-names: Peng
+      - family-names: Osteen
+        given-names: Philip
+      - family-names: Wigness
+        given-names: Maggie
+      - family-names: Saripalli
+        given-names: Srikanth
+    year: 2020
+    identifiers:
+      - type: other
+        value: "arXiv:2011.12954"
