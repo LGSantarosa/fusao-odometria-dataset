@@ -8,10 +8,19 @@ dois por LiDAR), com indicadores de qualidade, máscaras de validade e ground tr
 BotanicGarden e do RELLIS-3D. Inclui o pipeline reproduzível que gera o dataset e o código do primeiro experimento de
 fusão (protocolo pré-registrado).
 
-**Primeiro experimento de fusão (20/10/2026):** o resultado confirmatório foi negativo pela regra pré-registrada — o
-modelo aprendido não superou todos os baselines nas duas componentes. Descritivamente, a ponderação aprendida (F1)
-melhorou consistentemente a velocidade angular, e a média simples superou a odometria isolada selecionada nas duas
-dobras. Detalhes em `docs/RESULTS_fusion_model.md`.
+## Onde estamos
+
+1. **Dataset — concluído.** Esta era a primeira tarefa do projeto. As quatro odometrias foram processadas em quatro
+   sequências; os dados estão sincronizados e acompanhados de schema, manifesto de integridade, testes e pipeline
+   reproduzível.
+2. **Primeiro experimento de fusão — concluído.** Esta foi uma segunda etapa, realizada depois do fechamento do
+   dataset. O resultado foi negativo pela regra pré-registrada: os modelos aprendidos não superaram todos os baselines
+   nas duas componentes e dobras. Isso não invalida o dataset. Descritivamente, o F1 obteve o menor erro de velocidade
+   angular nas duas dobras, e a média simples superou a odometria isolada selecionada. Detalhes em
+   [`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md).
+3. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
+   validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
+   institucional do OneDrive da PUC.
 
 ## Estado
 
