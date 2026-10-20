@@ -1,8 +1,91 @@
 # Resultados — modelo de fusão (protocolo `docs/protocol_fusion_model.md`)
 
-## Fase 1 — execução de 20/10/2026 (válida; aguarda revisão)
+## Fase 2 — teste confirmatório de 20/10/2026
 
-**Situação: concluída, aguardando revisão e liberação da fase 2.** Substitui a execução invalidada de 19/10 (abaixo).
+**Situação: concluída. Resultado pela regra pré-registrada (seção 9): negativo para F1 e para F2.** Registro sem
+reinterpretação; as observações descritivas abaixo não alteram a decisão.
+
+**Execução.** Código `0ca8afc` (fase 1 revisada e fase 2 liberada em 20/10), árvore limpa e push feito antes da
+execução. `python -m ofd.fusion_run phase2`, 13:49 → 13:53 (3 min 33 s), memória máxima 0,51 GB, código 0. Seleções
+congeladas da fase 1 (`selected.json` de cada dobra); modelos finais com as sementes 0–4. Dobra A: treino 1018-00,
+teste 1018-13 (1936 linhas com GT); dobra B: treino 1018-13, teste 1018-00 (1299 linhas). Nenhuma execução falhou.
+
+**Regra de decisão** (F1 e F2 versus Bsel e B6; diferença > 2 desvios-padrão de sementes; positivo só se "sim" nas 4
+linhas):
+
+F1:
+
+| Dobra | Métrica | Média | 2 dp | Bsel − média | B6 − média | Supera ambos? |
+|---|---|---:|---:|---:|---:|---|
+| A | rmse_v | 0,1564 | 0,0044 | +0,0322 | -0,0002 | não |
+| A | rmse_w | 0,0291 | 0,0005 | +0,0330 | +0,0084 | sim |
+| B | rmse_v | 0,1388 | 0,0008 | +0,0091 | -0,0127 | não |
+| B | rmse_w | 0,0216 | 0,0011 | +0,0285 | +0,0018 | sim |
+
+F2 (comparação):
+
+| Dobra | Métrica | Média | 2 dp | Bsel − média | B6 − média | Supera ambos? |
+|---|---|---:|---:|---:|---:|---|
+| A | rmse_v | 0,1894 | 0,0194 | -0,0007 | -0,0331 | não |
+| A | rmse_w | 0,0660 | 0,0014 | -0,0039 | -0,0285 | não |
+| B | rmse_v | 0,1279 | 0,0013 | +0,0200 | -0,0019 | não |
+| B | rmse_w | 0,0245 | 0,0005 | +0,0256 | -0,0011 | não |
+
+`decision.json`: F1 `passed = false` (falha em `rmse_v` nas duas dobras; passa em `rmse_w` nas duas); F2
+`passed = false` (falha nas quatro linhas).
+
+**Métricas no teste** (primárias em m/s e rad/s; média ± desvio-padrão amostral sobre 5 sementes para F1 e F2;
+secundárias são médias):
+
+| Dobra | Modelo | RMSE v | RMSE ω | RPE t 10 m | RPE r 10 m (rad) | ATE (m) |
+|---|---|---:|---:|---:|---:|---:|
+| A | B1 | 0,2007 | 0,0626 | 0,635 | 0,0215 | 1,858 |
+| A | B2 | 0,1887 | 0,0622 | 0,588 | 0,0165 | 2,144 |
+| A | B3 | 0,1546 | 0,0654 | 0,100 | 0,0140 | 0,083 |
+| A | B4 | 0,3294 | 0,0563 | 0,250 | 0,0534 | 1,826 |
+| A | B5 | 0,1549 | 0,0372 | 0,245 | 0,0156 | 0,810 |
+| A | Bsel | 0,1887 | 0,0622 | 0,588 | 0,0165 | 2,144 |
+| A | B6 | 0,1563 | 0,0375 | 0,387 | 0,0520 | 2,901 |
+| A | F1 | 0,1564 ± 0,0022 | 0,0291 ± 0,0003 | 0,276 | 0,0240 | 0,945 |
+| A | F2 | 0,1894 ± 0,0097 | 0,0660 ± 0,0007 | 1,991 | 0,3270 | 17,264 |
+| B | B1 | 0,1639 | 0,0435 | 0,514 | 0,0166 | 0,825 |
+| B | B2 | 0,1673 | 0,0426 | 0,628 | 0,0152 | 1,029 |
+| B | B3 | 0,1479 | 0,0501 | 0,087 | 0,0100 | 0,164 |
+| B | B4 | 0,2423 | 0,0380 | 0,195 | 0,0301 | 0,132 |
+| B | B5 | 0,1312 | 0,0242 | 0,273 | 0,0107 | 0,435 |
+| B | Bsel | 0,1479 | 0,0501 | 0,087 | 0,0100 | 0,164 |
+| B | B6 | 0,1261 | 0,0234 | 0,149 | 0,0292 | 0,307 |
+| B | F1 | 0,1388 ± 0,0004 | 0,0216 ± 0,0006 | 0,333 | 0,0096 | 0,559 |
+| B | F2 | 0,1279 ± 0,0007 | 0,0245 ± 0,0002 | 0,252 | 0,0383 | 1,458 |
+
+B1–B4 = ORB-SLAM3, Stella, FAST-LIO, KISS-ICP com retenção causal; B5 = média das válidas; Bsel = melhor isolada
+escolhida no treino (A: Stella; B: FAST-LIO); B6 = ridge.
+
+**Observações descritivas (não decidem).**
+- F1 tem o menor RMSE ω entre todos os modelos nas duas dobras (A: 0,0291 contra 0,0372 de B5, o melhor baseline;
+  B: 0,0216 contra 0,0234 de B6). No RMSE v, F1 empata com B6 na dobra A (0,1564 contra 0,1563) e perde para B6, B5
+  e F2 na dobra B.
+- A média simples B5 supera Bsel nas duas primárias e nas duas dobras.
+- F2 tem ATE de 17,3 m na dobra A (deriva na integração), contra 0,08 m de FAST-LIO isolado (B3).
+- Pesos médios de F1 (`weights_f1.csv`): com 1 fonte válida, 100% KISS-ICP (único válido); com 2, predominância do
+  FAST-LIO (A: 0,92; B: 0,77); com 4, pesos próximos do uniforme (0,17–0,30). Estrato de 3 fontes: n = 34 (A) e n = 0 (B,
+  indefinido).
+- RELLIS (exploratório, sem métricas de erro): predições gravadas em `phase2/rellis/predictions/` (40 arquivos);
+  `agreement.csv` dá a diferença RMS entre os modelos das duas dobras.
+
+Artefatos (fora do git):
+
+| Arquivo | SHA-256 |
+|---|---|
+| `data/analysis/fusion/phase2/test_metrics.csv` | `768ae07de1b83fb6a77b55e9b6cca52cb7c11cb8aab5c114e7f5467072c156b4` |
+| `data/analysis/fusion/phase2/stratified.csv` | `97c7b47c0f093b10de91247926a2b016b64c3a743934ad0593ad0856f0b7bf97` |
+| `data/analysis/fusion/phase2/weights_f1.csv` | `6164b3b8a8cac906eca30e5c117cd3ea7ce985f663097e995914657075499827` |
+| `data/analysis/fusion/phase2/decision.json` | `c840ab7fc9e64f366b50ec3d147eac62683f48f3729e55f162482cd3fbacfd30` |
+| `data/analysis/fusion/logs/phase2.log` | `7a001391e3ca8d47d0fdc7d8daaca76a90cd1520b97d46f5208c3ea8f226fe8b` |
+
+## Fase 1 — execução de 20/10/2026 (válida; revisada)
+
+**Situação: concluída e revisada; fase 2 liberada em 20/10/2026.** Substitui a execução invalidada de 19/10 (abaixo).
 Código `77d70ba` (correção `eaf4983` + emenda do clipe em ±10, seção 5), árvore limpa, push feito antes da execução,
 dobras em série, nada mais em paralelo. Só a sequência de treino de cada dobra foi lida; nenhuma métrica na sequência
 de teste.
@@ -46,7 +129,6 @@ Artefatos (fora do git):
 | `data/analysis/fusion/logs/phase1_A.log` | `b02da1c51ca04f5d86dcdb59fca47de7730e35b760f67ca1454b1376dc9b0e3f` |
 | `data/analysis/fusion/logs/phase1_B.log` | `28303f4942d7cfd5719121cae2110b8eecc7ed8f7d441ea242cbf52e2370005d` |
 
-**Próximo passo:** revisão desta execução e liberação separada da fase 2 (`python -m ofd.fusion_run phase2`).
 
 ## Fase 1 — execução de 19/10/2026 invalidada por defeito de implementação
 
