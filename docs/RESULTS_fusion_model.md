@@ -54,7 +54,7 @@ que ele é inválido (exceto `valid`), como diz a seção 5. Teste novo:
 `tests/test_fusion_data.py::test_invalid_method_rows_are_imputed_even_when_raw_values_exist` (falhou antes da
 correção com valores de até 3,7 × 10²⁰). Suíte: 282 testes.
 
-**Lacuna do protocolo (para decisão do revisor; não implementada).** Depois da correção, medindo só nos dados de
+**Lacuna do protocolo (decidida em 20/10/2026: clipe em ±10, emenda na seção 5 e no §14 do protocolo).** Depois da correção, medindo só nos dados de
 treino de cada dobra, os maiores valores padronizados nos blocos de validação ficam entre 4σ e 62σ, exceto
 `kissicp_dt_ms` na subdobra 4 do 1018-13: 1636σ numa linha válida. A coluna é quase constante no treino (100,9 ms,
 σ ≈ 0,0016) e o protocolo só trata desvio exatamente zero. No treino completo, colunas com escala menor que 0,01:
@@ -68,5 +68,5 @@ atual e registrar a limitação.
 1e-3 (14 épocas), F2 16 × 2 com 1e-2 (388 épocas). B: Bsel FAST-LIO, B6 α = 100, F1 32 × 1 com 1e-4 (44 épocas),
 F2 16 × 2 com 1e-2 (484 épocas).
 
-**Próximo passo:** revisão da correção e decisão sobre a lacuna (emenda datada, se houver); depois, nova execução da
-fase 1 nas duas dobras com o código corrigido. A fase 2 continua bloqueada.
+**Próximo passo:** correção revisada e lacuna resolvida pela emenda de 20/10/2026; falta a nova execução da fase 1
+nas duas dobras com o código corrigido e o clipe. A fase 2 continua bloqueada.

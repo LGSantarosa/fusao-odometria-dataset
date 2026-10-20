@@ -102,3 +102,22 @@ def test_invalid_method_rows_are_imputed_even_when_raw_values_exist():
     assert (X[np.ix_(bad.to_numpy(), cols)] == 0).all()
     assert (X[bad.to_numpy(), fd.FEATURES.index("fastlio_valid")] == 0).all()
     assert np.abs(X).max() < 50
+
+
+def test_standardized_inputs_are_clipped_after_imputation_rules():
+    """Emenda de 20/10/2026 (seção 5): coluna quase constante no treino não gera valores extremos; o clipe vale nos
+    dois sinais, os zeros imputados e as colunas `valid` ficam intactos."""
+    df = synth_sequence(60, invalid_every={"fastlio": 3})
+    df["kissicp_dt_ms"] = 100.86 + 1e-4 * (np.arange(60) % 2)                # σ = 5e-5 no treino
+    st = fd.Standardizer().fit(df.iloc[:40])
+    df.loc[45, "kissicp_dt_ms"], df.loc[46, "kissicp_dt_ms"] = 103.4, 98.3     # ~±5 × 10⁴ σ sem clipe
+    X = st.transform(df)
+    k = fd.FEATURES.index("kissicp_dt_ms")
+    assert X[45, k] == fd.CLIP and X[46, k] == -fd.CLIP
+    assert np.abs(X).max() <= fd.CLIP
+    bad = (df["fastlio_valid"] == 0).to_numpy()
+    cols = [j for j, c in enumerate(fd.FEATURES) if c.startswith("fastlio_") and c != "fastlio_valid"]
+    assert (X[np.ix_(bad, cols)] == 0).all()
+    v = [j for j, c in enumerate(fd.FEATURES) if c.endswith("_valid")]
+    assert set(np.unique(X[:, v])) <= {0.0, 1.0}
+    assert (X[:, fd.FEATURES.index("fastlio_valid")] == df["fastlio_valid"].to_numpy()).all()

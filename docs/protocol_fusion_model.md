@@ -64,6 +64,9 @@ Nenhuma linha com GT tem zero fontes válidas (o KISS-ICP é válido em 1465/146
   - coluna com desvio-padrão zero no treino usa escala 1 (só é centrada);
   - coluna sem nenhum valor definido nas linhas de treino torna inválida a subdobra (validação interna) ou o modelo
     final daquela dobra, que é registrado como falha (seção 7), em vez de produzir NaN.
+- **Clipe (emenda de 20/10/2026, seção 14):** após a padronização, toda entrada padronizada é limitada ao intervalo
+  [−10, 10]. O clipe é aplicado igualmente em treino, validação, teste e inferência exploratória, antes da imputação
+  de valores ausentes por 0. Colunas `valid` permanecem binárias e a regra "desvio zero → escala 1" é mantida.
 - **Imputação neutra:** depois da padronização, todo valor ausente (método inválido, indicador ausente, variância
   móvel ainda sem janela) vira 0, isto é, a média de treino. A coluna `valid` de cada método permanece entre as
   entradas e informa a ausência. Nenhuma linha ou coluna é removida por ter valores ausentes.
@@ -277,3 +280,19 @@ real foi lido, nenhuma validação interna foi executada e nenhum modelo foi tre
   (seção 5 violada). Correção em `Standardizer.transform`, com teste; artefatos preservados em
   `data/analysis/fusion/phase1_invalid_3c34457/`. Lacuna registrada para decisão: colunas quase constantes no treino
   (escala positiva, mas muito pequena) produzem valores padronizados extremos, e a seção 5 só trata desvio zero.
+- **Emenda de 20/10/2026 (antes de repetir a fase 1): clipe das entradas padronizadas em ±10** (seção 5). Motivo: na
+  subdobra 4 da dobra B (treino 1018-13), o par de jitter dominante de `kissicp_dt_ms` e `fastlio_dt_ms` (98,34 e
+  103,42 ms, linhas 1677–1678) cai inteiro no bloco de validação; com desvio de treino de ≈ 0,0016 ms, as entradas
+  chegam a ≈ 1636σ (desvios menores nas linhas 1669, 1670 e 1676 chegam a ≈ 35,6σ). Nas subdobras 0–3 o desvio
+  de `kissicp_dt_ms` fica entre 0,09156 e 0,09186 ms, e no ajuste final é 0,08164 ms (máximo 31,32σ); `fastlio_dt_ms`
+  é semelhante. Na dobra A o maior valor nos blocos de validação é ≈ 61σ (`orbslam3_n_features`). No ajuste final,
+  o limite 10 afeta 28 células na dobra A e 70 na B, inclusive alguns extremos legítimos: é uma salvaguarda geral,
+  não um conserto só de `*_dt_ms`. Alternativas descartadas: manter o texto (seleção da dobra B dependente de 5
+  linhas); escala mínima por coluna (exige escolher ε por tipo de coluna); remover `*_dt_ms` (muda as 56 entradas);
+  a simples substituição por MAD ou IQR não resolve, pois ambas podem zerar numa coluna quantizada e exigiriam uma
+  regra adicional. **Origem da decisão:** a decisão foi informada pela inspeção das entradas das sequências de
+  treino da fase 1 invalidada, incluindo seus blocos internos de validação; nenhuma perda, época, configuração
+  selecionada ou métrica de teste foi usada para escolher k, e nenhum outro valor de k foi testado. Implementação:
+  `CLIP` em `ofd/fusion_data.py`, aplicado em `Standardizer.transform`; teste
+  `tests/test_fusion_data.py::test_standardized_inputs_are_clipped_after_imputation_rules` (os dois sinais, zeros
+  imputados e colunas `valid` preservados; falha sem o clipe). Suíte: 283 testes. Revisão: aprovada (Codex).

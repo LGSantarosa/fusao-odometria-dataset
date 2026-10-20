@@ -12,6 +12,7 @@ FEATURES = [c for c, r in schema.build_schema(schema.METHODS).items() if r == "f
 TARGET = [f"gt_{c}" for c in schema.TW]
 N_BLOCKS = 5
 PURGE = 10  # janela H da variância móvel causal (seção 4)
+CLIP = 10.0  # limite das entradas padronizadas (seção 5, emenda de 20/10/2026)
 
 
 class EmptyColumnError(ValueError):
@@ -43,8 +44,8 @@ def _method_of(col):
 
 class Standardizer:
     """Seção 5: média e desvio populacional por coluna nas linhas de treino em que está definida (colunas de um
-    método: só linhas com `valid = 1`); `valid` fica binário; desvio zero → escala 1; ausentes → 0 (imputação
-    neutra) depois de padronizar."""
+    método: só linhas com `valid = 1`); `valid` fica binário; desvio zero → escala 1; valores padronizados limitados
+    a ±CLIP; ausentes → 0 (imputação neutra) depois do clipe."""
 
     def fit(self, df):
         self.mean, self.scale = {}, {}
@@ -69,7 +70,7 @@ class Standardizer:
             if c.endswith("_valid"):
                 X[:, j] = df[c].to_numpy(float)
                 continue
-            X[:, j] = (df[c].to_numpy(float) - self.mean[c]) / self.scale[c]
+            X[:, j] = np.clip((df[c].to_numpy(float) - self.mean[c]) / self.scale[c], -CLIP, CLIP)
             m = _method_of(c)
             if m:
                 X[df[f"{m}_valid"].to_numpy() != 1, j] = np.nan
