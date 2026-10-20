@@ -1,4 +1,6 @@
-# RASCUNHO — autoria, título, licença e DOI PENDENTES (decisão do professor/equipe).
+# MODELO, NÃO É UM CFF VÁLIDO: autoria, título, data, licença e links PENDENTES (decisão do professor/equipe).
+# Quando decididos, preencha com valores reais (date-released no formato AAAA-MM-DD, license como identificador SPDX,
+# repository-code e url como URLs), salve como CITATION.cff e valide com `cffconvert --validate`.
 cff-version: 1.2.0
 message: "Se usar este dataset, cite-o como abaixo e cite também os datasets de origem (BotanicGarden e RELLIS-3D)."
 type: dataset

@@ -8,6 +8,11 @@ dois por LiDAR), com indicadores de qualidade, máscaras de validade e ground tr
 BotanicGarden e do RELLIS-3D. Inclui o pipeline reproduzível que gera o dataset e o código do primeiro experimento de
 fusão (protocolo pré-registrado).
 
+**Primeiro experimento de fusão (20/10/2026):** o resultado confirmatório foi negativo pela regra pré-registrada — o
+modelo aprendido não superou todos os baselines nas duas componentes. Descritivamente, a ponderação aprendida (F1)
+melhorou consistentemente a velocidade angular, e a média simples superou a odometria isolada selecionada nas duas
+dobras. Detalhes em `docs/RESULTS_fusion_model.md`.
+
 ## Estado
 
 | Marco | Estado | Data | Evidência |
@@ -20,11 +25,11 @@ fusão (protocolo pré-registrado).
 | Fase 1 inicial | Invalidada e preservada | 19/10/2026 | `docs/RESULTS_fusion_model.md` |
 | Correção e clipe ±10 | Concluído | 20/10/2026 | `eaf4983`, `77d70ba` |
 | Fase 1 repetida e revisada | Aprovada | 20/10/2026 | `0ca8afc` |
-| Fase 2 confirmatória | Em execução | 20/10/2026 | executada sem ajustes |
-| Registro final dos resultados | Pendente | — | tabelas e decisão em `docs/RESULTS_fusion_model.md` |
-| Licenças de origem | Verificadas (ver abaixo) | 20/10/2026 | seção *Licenças* |
+| Fase 2 confirmatória | Concluída — resultado negativo pela regra pré-registrada | 20/10/2026 | executada com `0ca8afc`, sem ajustes |
+| Registro final dos resultados | Concluído | 20/10/2026 | `docs/RESULTS_fusion_model.md`, relato §3.8, `cff68f7`, `299197f` |
+| Licenças de origem | Termos levantados; autorização de redistribuição pendente | 20/10/2026 | seção *Licenças* |
 | README público e ficha do dataset | Em elaboração | — | este arquivo, `docs/DATASHEET.md` |
-| `CITATION.cff` e autoria | **PENDENTE — decisão do professor/equipe** | — | `CITATION.cff` |
+| `CITATION.cff` e autoria | **PENDENTE — decisão do professor/equipe** | — | `CITATION.cff.template` |
 | Hospedagem no OneDrive da PUC | **PENDENTE** | — | link institucional |
 | Validação do escopo pelo professor | Pendente | — | duas sequências confirmatórias com GT |
 | Preparação do artigo | Planejado | dez/2026 | conferência a definir |
@@ -106,7 +111,8 @@ Três camadas, tratadas separadamente:
 
 ## Citação
 
-**PENDENTE — autoria e referência do artigo.** Ver `CITATION.cff`. Cite também os datasets de origem.
+**PENDENTE — autoria e referência do artigo.** O `CITATION.cff` será gerado de `CITATION.cff.template` quando autoria,
+licença, data e links estiverem decididos. Cite também os datasets de origem.
 
 ## Contato
 
