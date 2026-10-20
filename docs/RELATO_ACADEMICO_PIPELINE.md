@@ -23,8 +23,9 @@ intervalo temporal efetivamente coberto por esse incremento; (iii) indicadores d
 
 Esta etapa responde parcialmente à primeira questão de pesquisa da dissertação, pois estabelece como as odometrias
 isoladas serão comparadas em ambientes não estruturados. Ela também cria a entrada necessária para responder à segunda
-questão, referente à comparação entre odometrias individuais e a futura abordagem de seleção ou fusão adaptativa. O
-modelo de aprendizado propriamente dito não integra o escopo deste repositório.
+questão, referente à comparação entre odometrias individuais e a abordagem de seleção ou fusão adaptativa. Um primeiro
+experimento confirmatório de fusão, com protocolo pré-registrado (`docs/protocol_fusion_model.md`), foi executado
+sobre este dataset e é relatado na seção 3.8.
 
 ## 2. Metodologia
 
@@ -492,6 +493,51 @@ investigação adicional exigirá novo protocolo registrado antes das execuçõe
 `8564ca1`; registro operacional da fase 2 em `docs/RESULTS_kissicp.md`; análise em `ofd/kissicp_analysis.py` e
 `tools/kissicp_phase2.py`; artefatos em `data/analysis/kissicp/phase2/`.
 
+### 3.8 Primeiro experimento confirmatório de fusão
+
+O protocolo do modelo foi pré-registrado antes de qualquer treinamento (`44bc961`). O delineamento usa validação
+cruzada por sequência entre as duas sequências com GT do BotanicGarden: na dobra A, treina-se no 1018-00 e testa-se no
+1018-13; na dobra B, o inverso. Hiperparâmetros, épocas e o melhor baseline foram escolhidos só na sequência de treino,
+por validação interna em cinco blocos temporais com purga de 10 linhas; a sequência de teste foi lida uma única vez. A
+entrada são as 56 colunas `feature` (velocidade em se(3), validade, idade, intervalo e indicadores de cada método),
+padronizadas no treino; o alvo é a velocidade do GT. O modelo principal (F1) é uma rede que produz pesos, por softmax
+restrita aos métodos válidos, para a combinação das velocidades estimadas; F2 é uma rede que prediz a velocidade
+diretamente. Os baselines são cada odometria isolada com retenção causal (B1–B4), a média das válidas (B5), a melhor
+isolada escolhida no treino (Bsel) e uma regressão ridge (B6). Pela regra pré-registrada, F1 só supera os baselines
+se, nas duas dobras e nas duas métricas primárias (RMSE das velocidades linear e angular), a média sobre cinco
+sementes for menor que Bsel e B6 por mais de dois desvios-padrão entre sementes.
+
+A primeira execução da validação interna foi invalidada por um defeito de implementação: a padronização não zerava
+as entradas de métodos inválidos que, no dataset, carregam valores antigos. O defeito foi corrigido com teste
+(`eaf4983`), a execução foi preservada para auditoria e, antes de repeti-la, uma emenda datada limitou as entradas
+padronizadas a ±10 desvios-padrão (`77d70ba`), porque colunas quase constantes no treino produziam valores extremos.
+A decisão da emenda usou apenas as entradas das sequências de treino; nenhuma perda, seleção ou métrica de teste.
+
+**Métricas primárias no teste (F1 e F2: média ± desvio-padrão sobre cinco sementes)**
+
+| Dobra (teste) | Modelo | RMSE v (m/s) | RMSE ω (rad/s) |
+|---|---|---:|---:|
+| A (1018-13) | Bsel (Stella) | 0,1887 | 0,0622 |
+| A (1018-13) | B5 (média) | 0,1549 | 0,0372 |
+| A (1018-13) | B6 (ridge) | 0,1563 | 0,0375 |
+| A (1018-13) | F1 | 0,1564 ± 0,0022 | 0,0291 ± 0,0003 |
+| A (1018-13) | F2 | 0,1894 ± 0,0097 | 0,0660 ± 0,0007 |
+| B (1018-00) | Bsel (FAST-LIO) | 0,1479 | 0,0501 |
+| B (1018-00) | B5 (média) | 0,1312 | 0,0242 |
+| B (1018-00) | B6 (ridge) | 0,1261 | 0,0234 |
+| B (1018-00) | F1 | 0,1388 ± 0,0004 | 0,0216 ± 0,0006 |
+| B (1018-00) | F2 | 0,1279 ± 0,0007 | 0,0245 ± 0,0002 |
+
+O resultado confirmatório foi **negativo** pela regra pré-registrada: F1 superou Bsel e B6 com a margem exigida na
+velocidade angular nas duas dobras, mas não na velocidade linear, em que empatou com B6 na dobra A e foi pior na dobra
+B. F2 não satisfez a regra em nenhuma das quatro condições. Descritivamente, F1 obteve o menor RMSE angular entre todos
+os modelos nas duas dobras, e a média simples das fontes válidas (B5) superou a odometria isolada selecionada nas duas
+métricas e dobras. F2, embora competitivo em RMSE na dobra B, acumulou deriva na integração da dobra A (ATE de 17,3 m,
+contra 0,08 m do FAST-LIO isolado). Os pesos de F1 concentraram-se no FAST-LIO quando apenas duas fontes estavam
+válidas e ficaram próximos do uniforme com as quatro. Essas observações não alteram a decisão e quaisquer hipóteses
+delas derivadas exigem novo protocolo. Tabelas completas (por semente, por componente, por estrato, pesos e descrições
+do RELLIS-3D) estão em `docs/RESULTS_fusion_model.md`.
+
 ## 4. Ameaças à validade
 
 ### 4.1 Validade do construto
@@ -541,14 +587,21 @@ incremento, estado de rastreamento e indicadores de qualidade. Também justifica
 falha de infraestrutura e degradação real do algoritmo. A futura avaliação da fusão deverá comparar a trajetória final
 com cada fonte isolada e com estratégias de pesos fixos, conforme as hipóteses formuladas na dissertação.
 
+O primeiro experimento confirmatório (seção 3.8) cumpriu essa comparação em duas sequências do mesmo dataset. Ele não
+sustenta que a ponderação aprendida supere os baselines em ambas as componentes, mas indica ganho na velocidade
+angular e mostra que a combinação simples já supera a melhor fonte isolada escolhida no treino. Como há apenas duas
+sequências com GT validado, ambas do BotanicGarden, o resultado não permite generalizar para outros ambientes ou
+sensores.
+
 ## 6. Próximos experimentos
 
 1. Repetir as odometrias visuais nas sequências completas para estimar a variabilidade entre execuções.
 2. Caso se decida prosseguir com a causa da degradação do KISS-ICP com *deskew*, registrar novo protocolo que trate o
    aumento do erro por quadro sob compensação e a dependência, observada post hoc, entre o ganho da compensação e a
    velocidade angular (seção 3.7).
-3. Definir, com os responsáveis pelo modelo, se a entrada utilizará \(\Delta T + \Delta t + age\), velocidade em
-   \(\mathfrak{se}(3)\), ou ambas em estudo de ablação.
+3. Decidir com o orientador se duas sequências confirmatórias bastam para o primeiro artigo ou se é necessária uma
+   segunda base com GT validado; novas hipóteses de fusão (por exemplo, tratar translação e rotação separadamente)
+   exigem protocolo próprio, pré-registrado antes de qualquer execução.
 
 ## Referências
 
@@ -583,5 +636,7 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
   `data/analysis/rellis_assoc/result.json`.
 - Contrato de dados, decisões e riscos: `docs/superpowers/specs/2026-10-14-odom-fusion-dataset-design.md`.
 - Sequências completas e tolerância do casamento do FAST-LIO2: `docs/RESULTS_sequences.md`.
+- Modelo de fusão: protocolo `docs/protocol_fusion_model.md` (`44bc961`, emenda `77d70ba`), resultados
+  `docs/RESULTS_fusion_model.md`; fase 1 em `0ca8afc`, fase 2 executada com `0ca8afc`.
 - Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`; tolerância do casamento do FAST-LIO2 em
   `f0b7ea7`, com correções de documentação e da interface de remontagem no commit seguinte.

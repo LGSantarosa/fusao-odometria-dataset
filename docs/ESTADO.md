@@ -1,6 +1,6 @@
-# Estado do projeto — 2026-10-19
+# Estado do projeto — 2026-10-20
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 282 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 283 testes passando (`scripts/test.sh -q`).
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
@@ -86,8 +86,15 @@ Fase 0 commitada em `3c34457`.
 Fase 1 executada em 19/10 (A: 1 h 24 min; B: 2 h 05 min) e **invalidada**: a padronização não zerava as entradas de
 métodos inválidos que no dataset trazem valores antigos (`dt_ms`, `age_ms`, variância móvel), violando a seção 5.
 Defeito corrigido com teste; artefatos preservados em `data/analysis/fusion/phase1_invalid_3c34457/`
-(`docs/RESULTS_fusion_model.md`). **Próximo passo: revisão da correção e decisão sobre a lacuna das colunas quase
-constantes; depois, nova execução da fase 1.** Fase 2 bloqueada.
+(`docs/RESULTS_fusion_model.md`).
+Emenda de 20/10 (`77d70ba`): entradas padronizadas limitadas a ±10 (seção 5 e §14 do protocolo), decidida antes de
+repetir a fase 1. Fase 1 repetida em 20/10 (A: 1 h 14 min; B: 2 h 12 min), sem falhas, revisada (`0ca8afc`).
+**Fase 2 executada em 20/10 com `0ca8afc`: resultado negativo pela regra pré-registrada** para F1 (supera Bsel e B6
+em RMSE ω nas duas dobras, mas não em RMSE v: empata com B6 na dobra A e perde na B) e para F2 (falha nas quatro
+condições). Descritivamente, a média simples (B5) supera Bsel nas duas primárias e dobras. Registro completo em
+`docs/RESULTS_fusion_model.md` e no relato (§3.8). Novas hipóteses exigem protocolo separado.
+**Próximo passo:** resumo ao professor (escopo do primeiro artigo; duas sequências confirmatórias bastam?) e pacote
+público do dataset (branch `docs/public-package`; autoria, licenças e link institucional pendentes).
 
 Decisões e evidências detalhadas: `docs/preflight_rellis.md`, `docs/deskew_rellis.md`, `docs/RESULTS_sequences.md`,
 `docs/RELATO_ACADEMICO_PIPELINE.md`, spec e plano em `docs/superpowers/`.
