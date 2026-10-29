@@ -24,19 +24,36 @@ em se(3), validade, idade, intervalo e indicadores de qualidade. O alvo é a vel
 **Como foi avaliado.** Para saber se a fusão generaliza para um percurso não visto, o teste usa as duas sequências
 BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o inverso. Comparamos a rede que
 aprende pesos para as fontes (F1) e uma regressão direta (F2) com cada odometria isolada, a média das fontes válidas e
-uma regressão ridge. O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fusion_model.md), os
-resultados em [`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md) e a descrição das colunas, proveniência e
-limitações em [`docs/DATASHEET.md`](docs/DATASHEET.md).
+uma regressão ridge. Foi um teste confirmatório de fato: protocolo, métricas, baselines e regra de decisão foram fixados
+antes da fase de teste, e cada sequência de teste só foi aberta depois da seleção feita na sequência de treino.
+
+**Resultado deste primeiro teste.** A hipótese confirmatória não foi atendida. O F1 superou os baselines com a margem
+exigida no erro de velocidade angular nas duas dobras, mas não no erro de velocidade linear; o F2 também não satisfez a
+regra pré-registrada. Portanto, o resultado foi registrado como negativo — isso significa que esses modelos, neste
+desenho experimental, não demonstraram superar os baselines em todos os critérios, e não que toda fusão aprendida seja
+inviável. Como resultados descritivos, o F1 teve o menor erro angular nas duas dobras e a média simples das fontes
+válidas superou a odometria isolada selecionada.
+
+**O que vem depois.** Este foi o primeiro experimento de fusão, não uma conclusão definitiva sobre a abordagem. Como a
+avaliação teve somente dois percursos com GT, do mesmo dataset e dos mesmos sensores, novos experimentos são necessários
+para sustentar conclusões mais amplas. Os próximos passos registrados são repetir as odometrias visuais, incluir outra
+base ou mais sequências com GT validado e testar novas hipóteses de fusão, como tratar translação e rotação
+separadamente. Esses estudos ainda não foram executados; o escopo depende de decisão com o orientador, e cada nova
+hipótese confirmatória deverá ter protocolo próprio definido antes do teste.
+
+O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fusion_model.md), os resultados em
+[`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md) e a descrição das colunas, proveniência e limitações em
+[`docs/DATASHEET.md`](docs/DATASHEET.md).
 
 1. **Dataset — concluído.** Esta era a primeira tarefa do projeto. As quatro odometrias foram processadas em quatro
    sequências; os dados estão sincronizados e acompanhados de schema, manifesto de integridade, testes e pipeline
    reproduzível.
 2. **Primeiro experimento de fusão — concluído.** Esta foi uma segunda etapa, realizada depois do fechamento do
-   dataset. O resultado foi negativo pela regra pré-registrada: os modelos aprendidos não superaram todos os baselines
-   nas duas componentes e dobras. Isso não invalida o dataset. Descritivamente, o F1 obteve o menor erro de velocidade
-   angular nas duas dobras, e a média simples superou a odometria isolada selecionada. Detalhes em
+   dataset. O resultado e seus limites estão resumidos acima; tabelas e análises completas estão em
    [`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md).
-3. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
+3. **Próximos experimentos — planejados, ainda não executados.** A ampliação da avaliação depende da definição de
+   escopo com o orientador e de novos protocolos registrados antes de cada teste confirmatório.
+4. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
    validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
    institucional do OneDrive da PUC.
 
