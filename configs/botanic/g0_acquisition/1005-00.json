@@ -1,9 +1,11 @@
 {
   "seq": "1005-00",
-  "source": "https://scidata.sjtu.edu.cn/records/kfjy8-ex881 (md5 do registro, consultado em 29/10/2026)",
+  "source": "md5: https://scidata.sjtu.edu.cn/records/kfjy8-ex881; sha256 e arquivo: OneDrive do catálogo oficial (README 84c4806); consultados em 29/10/2026",
   "bag": {
     "path": "data/raw/botanic/1005_00_VLIO.bag",
-    "md5": "49d45853bc0fca326120fffe281badd3"
+    "md5": "49d45853bc0fca326120fffe281badd3",
+    "onedrive": "https://1drv.ms/u/c/8775740a3f2ddefb/EfveLT8KdHUggIeMAAAAAAABEvpTotVSjnj7bzHdINeAdw?e=4xRYLD",
+    "sha256": "2b55d830cbe28adba19478fd7a10b597817296cf1764e3fdf65c5d7b4878352d"
   },
   "gt": {
     "path": "data/sealed/botanic_gt/gt_1005_00_qnew.bag",
