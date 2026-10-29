@@ -5,17 +5,18 @@
 > `docs/protocol_fusion_model.md`. A triagem do parecer está em
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md`,
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md`,
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md` e
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md` e
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r5.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md`,
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md`,
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r5.md` e
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r6.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
 > do novo protocolo.
 
 ## 1. Ideia e escopo do artigo
 
 Pergunta confirmatória proposta:
 
-> Em percursos não vistos, o uso explícito de histórico causal reduz o erro da fusão além do que se obtém com a
-> ponderação por passo e com uma suavização temporal causal sem aprendizado?
+> Em novas sequências de outras datas, no mesmo local e na mesma plataforma, o uso explícito de histórico causal reduz
+> o erro da fusão além do que se obtém com a ponderação por passo e com uma suavização temporal causal sem aprendizado?
 
 O artigo deverá manter duas análises distintas:
 
@@ -39,22 +40,26 @@ resultados. `rellis_example` e `00000` continuam somente descritivas porque não
 Antes de continuar para um estudo confirmatório, é necessário:
 
 1. inventariar sequências novas com GT, sem consultar erros das odometrias;
-2. definir a sequência como unidade estatística independente;
+2. definir a sequência como unidade da regra principal e registrar o agrupamento por dia de coleta;
 3. fixar quantas sequências externas existirão e qual inferência é possível com esse número;
-4. decidir a generalização alegada: outro percurso, outro ambiente, outro conjunto de sensores ou robô real.
+4. decidir a generalização alegada: nova sequência/data, outro local, outro conjunto de sensores ou robô real.
 
 Um teste exato de sinais ilustra o limite: com hipótese direcional unilateral e α = 0,05, `k = 5` só rejeita a hipótese
 nula se as cinco sequências forem favoráveis (`p = 1/2⁵ = 0,03125`); no teste bilateral são necessárias pelo menos seis
 sequências para que unanimidade alcance 5%. Isso é apenas um mínimo matemático, não uma justificativa geral de poder.
-O número final deverá ser sustentado pela regra de decisão e pelo efeito mínimo relevante.
+O número final deverá ser sustentado pela regra de decisão e pelo efeito mínimo relevante. Como as sequências se
+agrupam por dia, o valor do teste por sequência não será apresentado como `p` calibrado para oito observações
+independentes; será uma regra de decisão acompanhada da condição por dia e da limitação de dependência intragrupo.
 
 Se não houver sequências externas suficientes, o estudo será rotulado como **benchmark piloto/exploratório**, sem
 alegação confirmatória nova.
 
-O inventário catalográfico de 29/10/2026 encontrou oito candidatas públicas novas com VLIO e GT anunciado. Nenhum bag
-externo foi aberto: a elegibilidade e o `k` final continuam pendentes da triagem estrutural cega. Com esse conjunto, a
-alegação máxima será generalização para outro percurso no mesmo domínio e na mesma plataforma, não para outro ambiente
-ou conjunto de sensores. Critérios, lista e barreira cega estão em `docs/INVENTORY_G0.md`.
+O inventário catalográfico de 29/10/2026 encontrou oito candidatas públicas novas com VLIO e GT anunciado, agrupadas
+em somente três dias (`1005`, `1006` e `1008`). Nenhum bag externo foi aberto: a elegibilidade e o `k` final continuam
+pendentes da triagem estrutural cega. Com esse conjunto, a alegação máxima será generalização para novas sequências de
+outras datas, no mesmo local e na mesma plataforma; não há evidência cega de que os percursos não se sobrepõem. A regra
+manterá a sequência como unidade principal, exigirá também efeito mediano favorável em cada um dos três dias e declarará
+a dependência intradia como limitação. Critérios, lista e barreira cega estão em `docs/INVENTORY_G0.md`.
 
 ### G1 — processamento cego do teste
 
@@ -83,6 +88,11 @@ modo cego, coberto por testes, com o seguinte fluxo:
    o relatório final em uma execução auditável.
 7. **Sem retorno ao desenvolvimento:** qualquer falha após a abertura é registrada e tratada conforme regra definida no
    protocolo; o resultado não pode orientar mudanças e nova tentativa informal.
+
+Uma sequência aprovada na triagem permanecerá no teste qualquer que seja a inicialização, validade ou cobertura das
+odometrias. Esses valores serão resultados reportados. Somente falhas operacionais externas ao método e enumeradas no
+protocolo poderão autorizar repetição; falha própria do método, cobertura baixa ou nula e erro alto não autorizam
+exclusão nem nova realização.
 
 Quando possível, uma pessoa que não escolhe modelos deverá custodiar o GT ou executar a abertura. Testes automatizados
 deverão provar que o modo cego não grava métricas, alvos nem erros e que a anexação do GT não muda nenhum byte lógico das
@@ -218,12 +228,16 @@ uma referência offline alternativa.
 - **Teste externo:** `k` sequências novas elegíveis, mantidas no fluxo cego de G1.
 - **RELLIS-3D:** inferência descritiva, sem métricas de erro.
 
-Nenhuma linha será embaralhada aleatoriamente entre treino e validação/teste. A unidade externa é a sequência. O modelo
-final será ajustado nos dados de desenvolvimento somente depois de arquitetura, janela e grades estarem congeladas.
+Nenhuma linha será embaralhada aleatoriamente entre treino e validação/teste. A unidade externa principal é a sequência,
+mas as candidatas pertencem a somente três dias de coleta e não serão tratadas como oito condições plenamente
+independentes. O teste confirmatório exigirá representação de `1005`, `1006` e `1008`; dependência intradia será uma
+limitação explícita. O modelo final será ajustado nos dados de desenvolvimento somente depois de arquitetura, janela e
+grades estarem congeladas.
 
 ### 4.2 Validação interna no desenvolvimento
 
-A seleção principal imitará a generalização para outro percurso por **leave-one-sequence-out (LOSO)**:
+A seleção principal medirá transferência entre as duas sequências conhecidas por **leave-one-sequence-out (LOSO)**;
+ela não demonstra que as rotas são distintas nem reproduz independência entre dias:
 
 1. dobra D-A: treinar em `1018-00` e validar em `1018-13`;
 2. dobra D-B: treinar em `1018-13` e validar em `1018-00`;
@@ -381,8 +395,9 @@ H1 somente será positiva se o candidato W + Pα satisfizer, contra **F1-R + Pα
 
 1. a melhora relativa mediana por sequência for pelo menos `δ_v` em RMSE linear e `δ_ω` em RMSE angular;
 2. a quantidade de sequências que excede cada margem satisfizer a regra exata pré-fixada para `k`;
-3. o RPE de 10 m não piorar mais que `δ_RPE`;
-4. todas as métricas estiverem definidas no número mínimo de sequências estabelecido.
+3. para cada contraste e métrica primária, a melhora mediana seja favorável separadamente em `1005`, `1006` e `1008`;
+4. o RPE de 10 m não piorar mais que `δ_RPE`;
+5. todas as métricas estiverem definidas no número mínimo de sequências estabelecido.
 
 H2 será testada somente após H1 e aplicará a mesma lógica contra **MLP-W + Pα com o mesmo `W`**. H3 contra T2/Kalman
 só será confirmatória se estiver no protocolo antes da abertura; caso contrário será descritiva. A ordem hierárquica
@@ -425,7 +440,10 @@ documentada. Um modelo temporal pode aprender padrões específicos dessa realiz
 
 O teste principal usará uma única realização oficial: nas sequências existentes, a realização do dataset v1; nas novas,
 a primeira execução completa do pipeline congelado que satisfizer critérios operacionais definidos sem GT. Uma nova
-tentativa só poderá ocorrer por falha operacional prevista no protocolo, nunca pelo erro da trajetória.
+tentativa só poderá ocorrer por falha operacional externa ao método prevista no protocolo — por exemplo, interrupção
+do host ou falha de escrita comprovada —, nunca por não inicialização, exceção própria do método, timeout sob o limite
+congelado, baixa cobertura, baixa validade ou erro da trajetória. Esses casos permanecem como resultado da primeira
+realização e não removem a sequência.
 
 Repetições de ORB-SLAM3 e Stella, se executadas em número pré-fixado e ainda no fluxo cego, entrarão apenas como análise
 de sensibilidade. Nenhuma repetição poderá substituir a realização principal ou ser escolhida pelo GT externo.

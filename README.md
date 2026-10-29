@@ -21,11 +21,12 @@ de uso central do dataset: testar a fusão aprendida das fontes, e não apenas a
 em se(3), validade, idade, intervalo e indicadores de qualidade. O alvo é a velocidade 6-DoF do ground truth
 (`gt_vx … gt_wz`) no mesmo intervalo.
 
-**Como foi avaliado.** Para saber se a fusão generaliza para um percurso não visto, o teste usa as duas sequências
-BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o inverso. Comparamos a rede que
-aprende pesos para as fontes (F1) e uma regressão direta (F2) com cada odometria isolada, a média das fontes válidas e
-uma regressão ridge. Foi um teste confirmatório de fato: protocolo, métricas, baselines e regra de decisão foram fixados
-antes da fase de teste, e cada sequência de teste só foi aberta depois da seleção feita na sequência de treino.
+**Como foi avaliado.** Para saber se a fusão transfere para uma sequência mantida fora do treino, o teste usa as duas
+sequências BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o inverso. Comparamos a
+rede que aprende pesos para as fontes (F1) e uma regressão direta (F2) com cada odometria isolada, a média das fontes
+válidas e uma regressão ridge. Foi um teste confirmatório de fato: protocolo, métricas, baselines e regra de decisão
+foram fixados antes da fase de teste, e cada sequência de teste só foi aberta depois da seleção feita na sequência de
+treino.
 
 **Resultado deste primeiro teste.** A hipótese confirmatória não foi atendida. O F1 superou os baselines com a margem
 exigida no erro de velocidade angular nas duas dobras, mas não no erro de velocidade linear; o F2 também não satisfez a
@@ -62,7 +63,8 @@ O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fu
    [quarto](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md). O aceite final e a sugestão sobre a grade de
    `α` estão na [quinta resposta](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r5.md). O
    [inventário G0](docs/INVENTORY_G0.md) encontrou oito candidatas públicas novas, mas a elegibilidade e o número final
-   de sequências ainda dependem da inspeção estrutural cega dos bags.
+   de sequências ainda dependem da inspeção estrutural cega dos bags; a emenda sobre dias, permanência das sequências e
+   equivalência do GT está na [sexta resposta](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r6.md).
 4. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
    validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
    institucional do OneDrive da PUC.
