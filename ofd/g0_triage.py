@@ -35,6 +35,8 @@ TYPES = {"left": "sensor_msgs/msg/Image", "right": "sensor_msgs/msg/Image",
 GT_TYPE = "geometry_msgs/msg/PoseStamped"
 CALIB_FILES = ("extrinsics/calib_chain.yaml", "camera_intrinsics/dalsa_gray0_down.yaml",
                "camera_intrinsics/dalsa_gray1_down.yaml")
+# campos do manifesto que não são hashes; qualquer outro campo de bag/gt é um hash declarado
+MANIFEST_META = {"path", "release", "onedrive"}
 OUTPUT_KEYS = {"seq", "decision", "codes", "hashes", "commit", "reference_sha256", "triage_version", "run_at"}
 
 
@@ -207,7 +209,7 @@ def triage(manifest, ref):
 
     hashes = {"bag": file_hashes(bag), "gt": file_hashes(gt)}
     for k in ("bag", "gt"):
-        if not _check_hashes({h: v for h, v in manifest[k].items() if h != "path" and h != "release"}, hashes[k]):
+        if not _check_hashes({h: v for h, v in manifest[k].items() if h not in MANIFEST_META}, hashes[k]):
             codes.add("HASH_MISMATCH")
 
     cal = Path(manifest.get("calibration_dir", ""))

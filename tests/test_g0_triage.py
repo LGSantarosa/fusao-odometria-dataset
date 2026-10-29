@@ -215,6 +215,12 @@ def test_hash_mismatch_and_match(tmp_path, ref):
         g.triage(m, ref)
 
 
+def test_manifest_metadata_is_not_a_hash(tmp_path, ref):
+    m = candidate(tmp_path)
+    m["bag"]["onedrive"] = "https://1drv.ms/u/c/x"
+    assert g.triage(m, ref)[0] == "APPROVED"
+
+
 def test_calibration_missing(tmp_path, ref):
     m = candidate(tmp_path)
     make_calib(tmp_path / "calib2", tweak=True)
