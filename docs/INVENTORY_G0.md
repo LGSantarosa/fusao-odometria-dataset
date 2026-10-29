@@ -5,7 +5,8 @@
 **Fonte consultada:** catálogo oficial do BotanicGarden no commit
 [`84c4806`](https://github.com/robot-pesg/BotanicGarden/tree/84c4806428ca16c154238e263a7f8bf828bf58e1)
 
-**Estado:** inventário catalográfico concluído; elegibilidade estrutural e `k` final pendentes.
+**Estado:** inventário catalográfico concluído; 5/8 candidatas triadas e aprovadas (seção 10); `k` final pendente das três
+sequências da tabela adicional.
 
 > **Emenda pré-triagem — 29/10/2026.** Antes de baixar ou inspecionar qualquer bag, foram acrescentados: agrupamento
 > por dia, limite da alegação a novas sequências, permanência de toda sequência aprovada independentemente do
@@ -127,14 +128,14 @@ distribuições ou desempenho.
 
 | Sequência | Grupo no catálogo oficial | VLIO público | GT público | Bag local | GT local | Decisão estrutural |
 |---|---|---:|---:|---:|---:|---|
-| `1005-00` | sete amostras principais | sim | sim | não | lacrado | pendente |
-| `1005-01` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1005-00` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
+| `1005-01` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 | `1005-05` | tabela pública adicional | sim | sim | não | não | pendente |
-| `1005-07` | sete amostras principais | sim | sim | não | lacrado | pendente |
-| `1006-01` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1005-07` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
+| `1006-01` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 | `1006-03` | tabela pública adicional | sim | sim | não | não | pendente |
 | `1008-01` | tabela pública adicional | sim | sim | não | não | pendente |
-| `1008-03` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1008-03` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 
 “Lacrado” significa presente em `data/sealed/botanic_gt/`, sem permissão de leitura e não aberto (seção 8).
 
@@ -179,14 +180,16 @@ fluxo sequência a sequência, mas não a aquisição integral simultânea.
 ## 7. Decisão G0 e próximo gate
 
 - **G0-A — existência catalográfica:** aprovado; existem oito candidatas públicas novas com GT anunciado.
-- **G0-B — elegibilidade estrutural:** pendente; nenhum bag foi inspecionado.
-- **`k` final:** pendente; `0 <= k <= 8` até a triagem cega.
-- **grupos de dia:** três (`1005`, `1006`, `1008`); todos precisam estar representados no teste confirmatório.
+- **G0-B — elegibilidade estrutural:** parcial; 5/5 candidatas triadas aprovadas (`1005-00`, `1005-01`, `1005-07`,
+  `1006-01`, `1008-03`; seção 10). `1005-05`, `1006-03` e `1008-01` aguardam aquisição do GT.
+- **`k` final:** `5 <= k <= 8`; aprovadas permanecem no teste (critério 8).
+- **grupos de dia:** três (`1005`, `1006`, `1008`); todos já representados entre as aprovadas (3, 1 e 1 sequências).
 - **status confirmatório:** ainda não concedido; depende de G0-B, representação dos três dias e gate de viabilidade
   estatística do piloto.
 
-O próximo passo seguro é implementar e testar a triagem estrutural e o modo cego G1 sem dados externos. Depois disso,
-os bags podem ser adquiridos, hasheados e classificados sem executar odometrias nem expor GT numérico.
+A triagem estrutural foi implementada (seção 9) e aplicada às cinco candidatas com GT local (seção 10). Próximos passos:
+adquirir e triar `1005-05`, `1006-03` e `1008-01` (GT da tabela adicional; formato a confirmar antes da triagem) e
+implementar o restante do modo cego G1 sem dados externos, antes de qualquer extração das sequências aprovadas.
 
 ## 8. Custódia do GT já presente localmente (emenda de 29/10/2026)
 
@@ -275,3 +278,50 @@ As interpretações operacionais abaixo foram fixadas antes de qualquer candidat
 
 **Verificação nos dados de desenvolvimento:** `1018-00` e `1018-13` foram triadas com a referência acima e saíram
 `APPROVED`.
+
+## 10. Resultado da triagem das cinco candidatas com GT local (29/10/2026)
+
+### 10.1 Aquisição
+
+O registro SJTU (`scidata.sjtu.edu.cn/records/kfjy8-ex881`) publica o md5 de cada bag; os md5 de `1018_00_VLIO.bag` e
+`1018_13_VLIO.bag` nesse registro coincidem com os calculados localmente. O download pela SJTU foi abandonado: o servidor
+aceita no máximo três conexões por IP, não aceita `Range` e derrubou as conexões repetidamente; nenhum arquivo foi
+concluído (registro em `data/raw/botanic/g0_download.log`). Os cinco bags foram baixados dos links OneDrive do catálogo
+oficial com `tools/fetch_onedrive.py`. Nome e tamanho de cada arquivo no OneDrive coincidem com o registro SJTU; cada
+bag foi aceito somente após conferência do md5 da SJTU e do sha256 do OneDrive, ambos declarados em
+`configs/botanic/g0_acquisition/<seq>.json`.
+
+### 10.2 Execução abortada
+
+A primeira execução (commit `51e99fa`) abortou nas cinco sequências com `ManifestError`: o campo `onedrive` do
+manifesto foi interpretado como hash declarado. O erro ocorreu depois do cálculo dos hashes dos arquivos e antes de
+qualquer leitura de headers; nenhuma decisão, contagem ou timestamp foi produzido e os hashes calculados foram
+descartados. A correção (`f0bb112`) só torna explícitos os campos de metadados do manifesto e inclui um teste de
+regressão; não altera critério nem referência.
+
+### 10.3 Decisões
+
+Execução com commit `f0bb112`, árvore limpa e referência sha256 `12a80e15…`:
+
+| Sequência | Dia | Decisão | md5 do bag | sha256 do GT (registrado pela triagem) |
+|---|---|---|---|---|
+| `1005-00` | `1005` | `APPROVED` | `49d45853bc0fca326120fffe281badd3` | `6f0b16379f547ad314206f6a755b3a8830a229a7b0db28631a364f8f31f15dc5` |
+| `1005-01` | `1005` | `APPROVED` | `9aed8283836ac148359532e52a0887dd` | `f8a218312e4b8166b19ef97b5f4c01c9d84bec74bb1a449998ee8795d914f893` |
+| `1005-07` | `1005` | `APPROVED` | `eb8ace84af1fb47a5bb78392acb6ae1f` | `d922c4b1431c812e7e0830b96b39cec8c2fb88095eb4a2777901be36978a1099` |
+| `1006-01` | `1006` | `APPROVED` | `cb427d7aac23fb03d35ee435e2b66e5a` | `e5327844e8e34aa6cee1665d8d8dadf58260bc61af747da6b7f8934283209cdb` |
+| `1008-03` | `1008` | `APPROVED` | `c8887c91a3e6d98bb79e3e71843b0b25` | `a070acce630560c8aea4a376fef39cc299fa1426c4103a364b371e916459133b` |
+
+Saídas completas em `data/analysis/model_comparison/g0_triage/<seq>.json`. A saída da triagem contém somente os campos
+da seção 9; nenhuma contagem, duração, trajetória ou métrica foi vista.
+
+### 10.4 Custódia
+
+`data/sealed/botanic_gt/CUSTODY.log` registra dez pares `unseal_read`/`reseal`: cinco da execução abortada (20:52–21:10
+UTC) e cinco da execução válida (21:10–21:48 UTC). Ao final, os cinco GTs permanecem com permissão `000`. Nessas
+leituras os GTs foram hasheados e somente os headers foram interpretados.
+
+### 10.5 Consequência
+
+Com cinco aprovadas e os três dias representados, a condição mínima de G0 para um teste com `k >= 5` está satisfeita.
+O status confirmatório continua dependente das três sequências restantes (que, se aprovadas, entram obrigatoriamente),
+do modo cego G1 completo (extração, tabela, predição e abertura) e do gate de viabilidade do piloto.
