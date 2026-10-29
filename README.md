@@ -53,8 +53,10 @@ O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fu
    [`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md).
 3. **Próximos experimentos — planejados, ainda não executados.** A ampliação da avaliação depende da definição de
    escopo com o orientador e de novos protocolos registrados antes de cada teste confirmatório. O rascunho do estudo
-   que compara MLP, CNN 1D causal, LSTM e BiLSTM está em
-   [`docs/PLAN_model_comparison.md`](docs/PLAN_model_comparison.md).
+   que compara MLP, CNN 1D causal, LSTM e BiLSTM foi revisado, mas permanece bloqueado pela disponibilidade de novas
+   sequências com GT e pela criação de um pipeline de teste cego. Ver
+   [`docs/PLAN_model_comparison.md`](docs/PLAN_model_comparison.md) e a
+   [`resposta ao parecer`](docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md).
 4. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
    validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
    institucional do OneDrive da PUC.
