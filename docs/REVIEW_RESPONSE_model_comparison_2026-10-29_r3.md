@@ -1,5 +1,9 @@
 # Resposta ao terceiro parecer — comparação de modelos
 
+> **Nota posterior:** a quarta revisão acrescentou o embargo da memória de Pα, inicialização na primeira predição válida
+> e a ressalva de que transportar atualizações é uma regra de orçamento, não equivalência. Ver
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md`.
+
 **Data:** 29/10/2026
 
 **Documento revisado:** `docs/PLAN_model_comparison.md`

@@ -57,8 +57,9 @@ O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fu
    sequências com GT e pela criação de um pipeline de teste cego. Ver
    [`docs/PLAN_model_comparison.md`](docs/PLAN_model_comparison.md) e as respostas ao
    [primeiro parecer](docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md), ao
-   [segundo](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md) e ao
-   [terceiro](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md).
+   [segundo](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md), ao
+   [terceiro](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md) e ao
+   [quarto](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md).
 4. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
    validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
    institucional do OneDrive da PUC.

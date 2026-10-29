@@ -4,8 +4,9 @@
 > é um protocolo pré-registrado, não autoriza abrir novas sequências de teste e não altera o experimento concluído em
 > `docs/protocol_fusion_model.md`. A triagem do parecer está em
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md`,
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md` e
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md`,
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md` e
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
 > do novo protocolo.
 
 ## 1. Ideia e escopo do artigo
@@ -165,9 +166,16 @@ Na validação e na inferência, Pα recebe a predição depois da política de 
 lacunas serão usados em B5, F1-R, MLP-W, CNN-W e LSTM-W. O valor de `α` será fixado com B5 nas duas dobras de
 desenvolvimento e não será reotimizado por modelo.
 
+A grade será restrita a `0 < α ≤ 1`; `α = 0` seria memória infinita e não será candidato.
+
+Antes da primeira predição válida, a saída permanece zero. Na primeira predição válida da sequência, o estado será
+inicializado diretamente com `y'_k = y_k`, sem mistura com zero; a EMA começa na predição válida seguinte. O filtro não
+será reiniciado em lacunas de GT ou de fontes, apenas no início de uma nova sequência.
+
 Configurações, CNN versus LSTM e o melhor orçamento de atualizações serão escolhidos pela perda padronizada calculada
-**depois de Pα**. Para cada avaliação, o filtro percorre causalmente a sequência completa a partir de estado zero e a
-perda é recortada apenas nos endpoints elegíveis; não há reset artificial no início de um bloco com GT.
+**depois de Pα**. Para cada avaliação, o filtro percorre causalmente a sequência completa com a inicialização definida
+acima e a perda é recortada apenas nos endpoints elegíveis; não há reset artificial no início de um bloco com GT. A
+influência do estado anterior ao bloco interno será limitada pelo embargo de memória definido na seção 4.3.
 
 Esse controle impede que um candidato vença apenas por receber uma suavização mais forte. T2 não usa Pα, pois é um
 sistema clássico de fusão/filtragem próprio e será identificado separadamente.
@@ -238,6 +246,10 @@ Não será usado o mesmo número de épocas. Os lotes serão reembaralhados quan
 exatamente no orçamento fixado, ainda que no meio de uma época. Serão reportados tanto atualizações quanto épocas
 efetivas para cada tamanho de treino.
 
+Transportar atualizações é uma **regra pré-fixada de orçamento**, não uma alegação de equivalência entre treinar em uma
+ou duas sequências. O número ótimo de atualizações pode crescer com mais dados; essa limitação será declarada e não será
+corrigida depois de observar o teste externo.
+
 ### 4.3 Campo receptivo e purga
 
 Definições:
@@ -245,26 +257,35 @@ Definições:
 - `H = 10`: janela causal já usada na variância de indicadores;
 - `W`: janela explícita do modelo temporal;
 - `R = W + H − 1`: campo receptivo máximo em linhas brutas.
+- `ε = 0,01`: peso residual máximo aceito para a memória anterior de Pα;
+- `M_α = ⌈ln(ε) / ln(1 − α)⌉` para `0 < α < 1`, e `M_α = 0` para `α = 1`.
 
 Nas subdobras temporais:
 
-1. janelas de treino posteriores ao bloco de validação terão purga de pelo menos `R` linhas, impedindo que contenham
-   features do bloco de validação;
-2. um embargo de alvo será aplicado nas bordas para reduzir dependência pela autocorrelação de `gt_*`; sua fórmula,
-   limiar, limite máximo e direção serão definidos usando apenas treino e congelados no protocolo;
-3. a validação poderá usar, como contexto, features anteriores ao início do bloco, pois são entradas disponíveis
-   causalmente e nunca incluem o alvo; essa escolha será registrada explicitamente;
-4. linhas sem GT dentro do contexto são permitidas, mas somente endpoints com as seis componentes do alvo finitas
+1. o embargo de alvo `E_gt` reduzirá dependência pela autocorrelação de `gt_*`; sua fórmula, limiar e limite máximo
+   serão definidos usando apenas treino e congelados no protocolo;
+2. antes do bloco, serão excluídas do treino pelo menos `E_antes = max(E_gt, R + M_α)` linhas. O termo `R` protege o
+   campo receptivo e `M_α` reduz a contribuição do estado formado por predições in-sample a no máximo `ε`;
+3. depois do bloco, serão excluídas do treino pelo menos `E_depois = max(E_gt, R)` linhas. Pα é causal, portanto não
+   exige termo de memória no lado posterior;
+4. a validação poderá usar como contexto as features do embargo anterior, que não participam do ajuste do modelo e
+   nunca incluem o alvo como entrada;
+5. linhas sem GT dentro do contexto são permitidas, mas somente endpoints com as seis componentes do alvo finitas
    contribuem para perda e métricas.
 
 A implementação usará máscaras distintas para endpoints supervisionados, contexto e linhas embargadas. Um teste de
-índices verificará a fórmula com casos de fronteira, sem depender apenas de inspeção visual.
+índices verificará a fórmula com casos de fronteira, sem depender apenas de inspeção visual. Valores candidatos de `α`
+que tornem uma subdobra estruturalmente inviável serão rejeitados por regra anterior às métricas, não depois de observar
+seu desempenho.
 
 ### 4.4 Testes de causalidade
 
 - alterar todas as linhas futuras e confirmar que predições anteriores da CNN/LSTM causal não mudam;
 - confirmar que nenhuma janela atravessa sequências;
 - confirmar que janelas de treino posteriores não alcançam o bloco de validação após a purga;
+- substituir por valores limitados as predições anteriores ao início do embargo `E_antes` e confirmar que a diferença
+  no estado de Pα na primeira linha avaliada não excede `ε` vezes a diferença inicial, além da tolerância numérica
+  pré-fixada;
 - confirmar que contexto sem GT não introduz alvo ou coluna de avaliação nas features;
 - confirmar que o modo cego de G1 não materializa qualquer métrica derivada do GT.
 
