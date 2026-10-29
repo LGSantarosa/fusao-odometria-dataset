@@ -6,7 +6,8 @@
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md`,
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md`,
 > `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md` e
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md` e
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r5.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
 > do novo protocolo.
 
 ## 1. Ideia e escopo do artigo
@@ -49,6 +50,11 @@ O número final deverá ser sustentado pela regra de decisão e pelo efeito mín
 
 Se não houver sequências externas suficientes, o estudo será rotulado como **benchmark piloto/exploratório**, sem
 alegação confirmatória nova.
+
+O inventário catalográfico de 29/10/2026 encontrou oito candidatas públicas novas com VLIO e GT anunciado. Nenhum bag
+externo foi aberto: a elegibilidade e o `k` final continuam pendentes da triagem estrutural cega. Com esse conjunto, a
+alegação máxima será generalização para outro percurso no mesmo domínio e na mesma plataforma, não para outro ambiente
+ou conjunto de sensores. Critérios, lista e barreira cega estão em `docs/INVENTORY_G0.md`.
 
 ### G1 — processamento cego do teste
 
@@ -276,7 +282,8 @@ Nas subdobras temporais:
 A implementação usará máscaras distintas para endpoints supervisionados, contexto e linhas embargadas. Um teste de
 índices verificará a fórmula com casos de fronteira, sem depender apenas de inspeção visual. Valores candidatos de `α`
 que tornem uma subdobra estruturalmente inviável serão rejeitados por regra anterior às métricas, não depois de observar
-seu desempenho.
+seu desempenho. O protocolo fixará, antes das grades, um `α_min` e uma fração máxima da subdobra que pode ser consumida
+pelos embargos; ambos serão critérios estruturais independentes da perda.
 
 ### 4.4 Testes de causalidade
 

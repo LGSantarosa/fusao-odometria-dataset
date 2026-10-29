@@ -59,7 +59,10 @@ O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fu
    [primeiro parecer](docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md), ao
    [segundo](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md), ao
    [terceiro](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md) e ao
-   [quarto](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md).
+   [quarto](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r4.md). O aceite final e a sugestão sobre a grade de
+   `α` estão na [quinta resposta](docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r5.md). O
+   [inventário G0](docs/INVENTORY_G0.md) encontrou oito candidatas públicas novas, mas a elegibilidade e o número final
+   de sequências ainda dependem da inspeção estrutural cega dos bags.
 4. **Publicação do dataset — em preparação.** O README e a ficha do dataset estão rascunhados. Ainda dependem de
    validação do escopo pelo professor, definição de autoria e licenças, autorização de redistribuição e link
    institucional do OneDrive da PUC.
