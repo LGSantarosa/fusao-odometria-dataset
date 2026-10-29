@@ -3,8 +3,9 @@
 > **RASCUNHO REVISADO — 29/10/2026.** Documento atualizado após revisão externa e verificação do pipeline. Ainda não
 > é um protocolo pré-registrado, não autoriza abrir novas sequências de teste e não altera o experimento concluído em
 > `docs/protocol_fusion_model.md`. A triagem do parecer está em
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md` e
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md`,
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md` e
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
 > do novo protocolo.
 
 ## 1. Ideia e escopo do artigo
@@ -86,8 +87,9 @@ Uma rede temporal pode parecer melhor apenas porque suaviza velocidades ruidosas
 combina apenas twists atuais não deve ser comparada de forma primária com um filtro que pode suavizar se ela própria não
 receber a mesma possibilidade. O núcleo adotará uma pós-filtragem comum:
 
-- **Pα — EMA comum:** a mesma EMA causal, com o mesmo `α`, será aplicada às saídas de B5, F1/MLP-W, MLP-W com janela e
-  CNN/LSTM-W. O valor será escolhido uma vez no piloto de desenvolvimento e congelado antes das grades neurais;
+- **Pα — EMA comum:** a mesma EMA causal, com o mesmo `α`, será aplicada às saídas de B5, F1-R/MLP-W, MLP-W com janela e
+  CNN/LSTM-W. O valor será escolhido uma vez para favorecer B5 no piloto de desenvolvimento e congelado antes das
+  grades neurais;
 - **T1 — B5 + Pα:** média das fontes válidas seguida da EMA comum;
 - **T2 — Kalman de twist:** estado de seis velocidades com dinâmica de persistência, atualização pelas fontes válidas,
   covariâncias estimadas apenas no treino e hiperparâmetros escolhidos na validação interna.
@@ -97,6 +99,10 @@ serão reportadas, mas não decidirão H1/H2. T2 permanece como comparador clás
 superioridade sobre ele só será adicionada como H3 se a análise de viabilidade mostrar poder suficiente. Equações,
 inicialização e grades de Pα/T2 serão fechadas no protocolo.
 
+Escolher `α` pela B5 é deliberadamente conservador: otimiza a pós-filtragem do comparador e pode ser subótimo para os
+modelos aprendidos. Nenhum `α` específico por modelo será permitido e o valor não poderá ser reotimizado depois de ver
+F1-R, MLP, CNN ou LSTM.
+
 ### G3 — hipótese e regra primárias
 
 Não será permitido escolher um vencedor depois de olhar o teste. A seleção entre CNN e LSTM ocorrerá somente na
@@ -104,7 +110,7 @@ validação interna e será tratada como parte do pipeline do modelo principal.
 
 Hipóteses hierárquicas candidatas:
 
-- **H1:** o encoder temporal causal selecionado, com cabeça W e Pα, supera F1-W + Pα e B5 + Pα em RMSE linear e angular
+- **H1:** o encoder temporal causal selecionado, com cabeça W e Pα, supera F1-R + Pα e B5 + Pα em RMSE linear e angular
   por uma margem prática pré-fixada, sem degradar RPE além da margem permitida.
 - **H2, testada somente se H1 passar:** o mesmo modelo supera MLP-W + Pα com a mesma janela `W`. Isso separa o efeito da
   arquitetura do simples acesso ao contexto.
@@ -120,7 +126,7 @@ Margens, número mínimo de sequências favoráveis, uso das sementes e regra de
 |---|---|---|
 | Fontes | B1–B4 e B5 | descritivo |
 | Não temporal aprendido | B6 ridge | comparador secundário |
-| Por passo | F1/MLP-W + Pα | comparador de H1 |
+| Por passo | F1-R (MLP-W por passo) + Pα | comparador de H1, retreinado |
 | Temporal clássico | T1 B5 + Pα e T2 Kalman | T1 em H1; T2 descritivo ou H3 |
 | Mesmo contexto | MLP-W com janela + Pα | controle de H2 |
 | Candidatos | CNN 1D-W + Pα e LSTM-W + Pα | um selecionado na validação interna |
@@ -129,11 +135,16 @@ Margens, número mínimo de sequências favoráveis, uso das sementes e regra de
 | Fontes removidas | leave-one-source-out no candidato | exploratório |
 | Perda inesperada | um cenário FAST-LIO2 pré-fixado | exploratório |
 
-### 3.1 O que “por passo” significa
+### 3.1 F1 histórico e F1-R
 
-F1 não recebe uma sequência explícita, mas suas 56 entradas já incluem a variância causal `*_var_H` de um indicador
-com `H = 10`. O nome correto no novo estudo será **MLP por passo com histórico resumido implícito H = 10**, e não
-“modelo sem histórico”. A MLP com janela receberá os mesmos passos completos fornecidos à CNN/LSTM.
+Os resultados de F1 do primeiro experimento serão preservados apenas como registro histórico. Eles não serão reutilizados
+em H1, pois foram ajustados em outra divisão e com outra regra de treinamento.
+
+O novo comparador **F1-R** será uma MLP-W por passo retreinada do zero no mesmo LOSO, com a mesma normalização, sementes,
+grade, orçamento de atualizações e critério de seleção das novas famílias. Depois receberá o mesmo Pα. F1-R não recebe
+uma sequência explícita, mas suas 56 entradas incluem a variância causal `*_var_H` de um indicador com `H = 10`; o nome
+correto é **MLP por passo com histórico resumido implícito H = 10**, e não “modelo sem histórico”. A MLP com janela
+receberá os mesmos passos completos fornecidos à CNN/LSTM.
 
 ### 3.2 Cabeça de ponderação W
 
@@ -148,10 +159,15 @@ T1 isola o efeito da mesma suavização aplicada à média; T2 representa uma fu
 
 ### 3.3 Pós-filtragem comum Pα
 
-Pα recebe a predição física de cada modelo depois da política de retenção causal e aplica
+Pα não participa do gradiente nem da perda de treino. Cada rede será treinada sobre sua saída física sem pós-filtragem.
+Na validação e na inferência, Pα recebe a predição depois da política de retenção causal e aplica
 `y'_k = α y_k + (1 − α) y'_{k−1}` componente a componente. O mesmo `α`, a mesma inicialização e a mesma regra para
-lacunas serão usados em B5, F1, MLP-W, CNN-W e LSTM-W. O valor de `α` será fixado com B5 nas duas dobras de
+lacunas serão usados em B5, F1-R, MLP-W, CNN-W e LSTM-W. O valor de `α` será fixado com B5 nas duas dobras de
 desenvolvimento e não será reotimizado por modelo.
+
+Configurações, CNN versus LSTM e o melhor orçamento de atualizações serão escolhidos pela perda padronizada calculada
+**depois de Pα**. Para cada avaliação, o filtro percorre causalmente a sequência completa a partir de estado zero e a
+perda é recortada apenas nos endpoints elegíveis; não há reset artificial no início de um bloco com GT.
 
 Esse controle impede que um candidato vença apenas por receber uma suavização mais forte. T2 não usa Pα, pois é um
 sistema clássico de fusão/filtragem próprio e será identificado separadamente.
@@ -207,12 +223,20 @@ A seleção será sequencial, toda dentro desse LOSO:
 4. escolher hiperparâmetros de T2 sem usar nenhuma sequência externa.
 
 Dentro da sequência de treino de cada dobra, blocos temporais com purga/embargo serão usados **somente para escolher o
-número de épocas** e detectar instabilidade. Eles não substituirão o LOSO como critério de arquitetura/configuração.
-Normalização, covariâncias e qualquer estado ajustável serão recalculados apenas na sequência de treino da dobra.
+orçamento de atualizações do otimizador** e detectar instabilidade. Eles não substituirão o LOSO como critério de
+arquitetura/configuração. Normalização, covariâncias e qualquer estado ajustável serão recalculados apenas na sequência
+de treino da dobra.
 
-Depois da seleção, o modelo externo final será treinado em `1018-00 + 1018-13`. O número final de épocas será uma função
-pré-fixada — candidata: mediana das épocas selecionadas nos blocos internos das duas dobras — e não usará nenhuma
-sequência externa.
+Com lote fixo de 64, cada checkpoint registrará o número cumulativo de chamadas a `optimizer.step()`. O melhor orçamento
+de uma execução será o número de atualizações no mínimo da perda de validação **após Pα**. Para treinar o modelo da dobra
+na sequência inteira, será usada a mediana, arredondada para cima, das atualizações selecionadas em todas as combinações
+de bloco interno e semente daquela dobra.
+
+Depois da seleção, o modelo externo final será treinado em `1018-00 + 1018-13` pelo número de atualizações derivado das
+duas dobras de desenvolvimento: mediana, arredondada para cima, dos dois orçamentos de dobra da configuração selecionada.
+Não será usado o mesmo número de épocas. Os lotes serão reembaralhados quando o iterador esgotar e o treino parará
+exatamente no orçamento fixado, ainda que no meio de uma época. Serão reportados tanto atualizações quanto épocas
+efetivas para cada tamanho de treino.
 
 ### 4.3 Campo receptivo e purga
 
@@ -250,19 +274,20 @@ Todos os modelos causais compartilharão:
 
 - as mesmas 56 features por passo, máscaras, alvos e divisões;
 - normalização e imputação ajustadas somente no treino;
-- perda principal matematicamente equivalente;
-- o mesmo conjunto de sementes e a mesma regra para número de épocas;
+- a mesma perda de treino sem Pα e a mesma perda de seleção após Pα;
+- o mesmo conjunto de sementes e a mesma regra para orçamento de atualizações;
 - **18 configurações por família neural**, como na grade atual, salvo emenda anterior ao protocolo;
 - o mesmo `W` e o mesmo Pα, ambos fixados antes das grades neurais;
-- faixas numéricas pré-declaradas de parâmetros, regularização e épocas;
+- faixas numéricas pré-declaradas de parâmetros, regularização e atualizações máximas;
 - um teto de parâmetros definido antes de abrir o teste externo;
 - o mesmo hardware, tamanho de lote e procedimento de medição para eficiência.
 
 O número idêntico de configurações reduz vantagem de busca, mas não garante custo igual; número de treinamentos, tempo e
 energia serão reportados. Baselines clássicos terão grades próprias pré-fixadas, sem inflá-las artificialmente até 18.
 
-CNN ou LSTM será escolhida pela perda LOSO média nas duas dobras de desenvolvimento conforme regra pré-registrada.
-Empates favorecerão o modelo menor e, persistindo, o de menor latência. A sequência externa não participará da escolha.
+F1-R, MLP-W, CNN-W e LSTM-W serão treinados sem Pα; suas configurações e a escolha CNN versus LSTM usarão a perda LOSO
+após Pα nas duas dobras de desenvolvimento. Empates favorecerão o modelo menor e, persistindo, o de menor latência. A
+sequência externa não participará da escolha.
 
 Pα será escolhido uma vez com B5 no LOSO e então aplicado sem reotimização a todos os modelos W. Configurações de T2
 também serão decididas somente pelo LOSO. T1 e T2 serão reportados no teste, mas nenhum poderá ser promovido olhando
@@ -324,7 +349,7 @@ alinhamento global, mas qualquer deriva grande será destacada.
 
 ### 7.3 Regra candidata
 
-H1 somente será positiva se o candidato W + Pα satisfizer, contra **F1-W + Pα** e contra **T1/B5 + Pα**:
+H1 somente será positiva se o candidato W + Pα satisfizer, contra **F1-R + Pα** e contra **T1/B5 + Pα**:
 
 1. a melhora relativa mediana por sequência for pelo menos `δ_v` em RMSE linear e `δ_ω` em RMSE angular;
 2. a quantidade de sequências que excede cada margem satisfizer a regra exata pré-fixada para `k`;
@@ -354,7 +379,7 @@ rotulado exploratório **antes** de qualquer abertura externa.
 
 - RMSE das seis componentes;
 - RPE, ATE e velocidade integrada;
-- saídas de B5/F1/MLP/CNN/LSTM antes de Pα, para separar ponderação e pós-filtragem;
+- saídas de B5/F1-R/MLP/CNN/LSTM antes de Pα, para separar ponderação e pós-filtragem;
 - primárias por quantidade e identidade das fontes válidas;
 - erro antes, durante e depois da perda de uma fonte e tempo de recuperação;
 - pesos da cabeça W e sua estabilidade;
@@ -390,8 +415,8 @@ de sensibilidade. Nenhuma repetição poderá substituir a realização principa
 
 - criar janelas, máscaras de endpoint/contexto e purga/embargo;
 - separar encoder da cabeça W/D;
-- implementar Pα, T1, T2, MLP-W com janela, CNN-W, LSTM-W e referências exploratórias;
-- preservar F1/F2 atuais sem alterar seus resultados;
+- implementar Pα, T1, T2, F1-R, MLP-W com janela, CNN-W, LSTM-W e referências exploratórias;
+- preservar os resultados históricos de F1/F2 sem reutilizar seus modelos em H1;
 - gravar configuração, semente, commit e hashes em cada artefato.
 
 ### Fase 2 — testes sintéticos e de contrato

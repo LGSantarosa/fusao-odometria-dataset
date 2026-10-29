@@ -1,5 +1,9 @@
 # Resposta ao segundo parecer — comparação de modelos
 
+> **Nota posterior:** a terceira revisão substituiu o comparador F1-W por F1-R retreinado, definiu seleção depois de
+> Pα e trocou, no §3 abaixo, o transporte do número de épocas pelo número de atualizações do otimizador. Ver
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r3.md`.
+
 **Data:** 29/10/2026
 
 **Documento revisado:** `docs/PLAN_model_comparison.md`
