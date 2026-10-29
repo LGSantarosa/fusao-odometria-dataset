@@ -10,6 +10,18 @@ fusão (protocolo pré-registrado).
 
 ## Onde estamos
 
+**Teste realizado.** Avaliamos se modelos aprendidos conseguem fundir quatro fontes de odometria para estimar, a cada
+scan do LiDAR (≈ 10 Hz), a velocidade 6-DoF do ground truth (`gt_vx … gt_wz`). As fontes são **ORB-SLAM3** e
+**Stella VSLAM** (visual estéreo), **FAST-LIO2** (LiDAR-inercial) e **KISS-ICP** (LiDAR). Para cada método, as entradas
+incluem velocidade em se(3), validade, idade, intervalo e indicadores de qualidade.
+
+O teste usa as duas sequências BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o
+inverso. Comparamos uma rede que aprende pesos para as quatro fontes (F1) e uma regressão direta (F2) com cada odometria
+isolada, a média das fontes válidas e uma regressão ridge. O protocolo completo está em
+[`docs/protocol_fusion_model.md`](docs/protocol_fusion_model.md), os resultados em
+[`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md) e a descrição das colunas, proveniência e limitações em
+[`docs/DATASHEET.md`](docs/DATASHEET.md).
+
 1. **Dataset — concluído.** Esta era a primeira tarefa do projeto. As quatro odometrias foram processadas em quatro
    sequências; os dados estão sincronizados e acompanhados de schema, manifesto de integridade, testes e pipeline
    reproduzível.
@@ -51,11 +63,6 @@ fusão (protocolo pré-registrado).
 | `1018-13` | BotanicGarden | 2071 | ≈ 209 s | sim (scanner Leica) | confirmatório |
 | `rellis_example` | RELLIS-3D | 599 | ≈ 60 s | não | exploratório |
 | `00000` | RELLIS-3D | 2849 | ≈ 285 s | não validado (ver ficha) | exploratório |
-
-Métodos: **ORB-SLAM3** e **Stella VSLAM** (visual estéreo), **FAST-LIO2** (LiDAR-inercial) e **KISS-ICP** (LiDAR).
-Uma linha por scan do LiDAR (≈ 10 Hz); para cada método, velocidade em se(3), validade, idade, intervalo e
-indicadores de qualidade; alvo `gt_vx … gt_wz`. Detalhes de colunas, proveniência e limitações em
-[`docs/DATASHEET.md`](docs/DATASHEET.md).
 
 ## Download
 
