@@ -233,3 +233,45 @@ proveniência e esquema (critério 2 da seção 3) serão feitos pela triagem ce
 ler `data/sealed/`; somente a triagem estrutural e a abertura única de G1 poderão restaurar a permissão de leitura, e
 cada restauração deverá ser registrada. O uso de um custodiante externo continua preferível e em aberto (seção 12 do
 plano).
+
+## 9. Implementação da triagem estrutural (29/10/2026)
+
+A triagem está em `ofd/g0_triage.py`, com testes em `tests/test_g0_triage.py`. A referência estrutural congelada é
+`configs/botanic/g0_reference.json` (sha256 `12a80e15f61225d920b8c32e9ef67a4ebfd5228ff7b0af559885129b8f67b947`),
+gerada pelo subcomando `reference` a partir de `1018-00` e `1018-13`. Os dois pares precisam produzir assinaturas
+idênticas, e produziram.
+
+As interpretações operacionais abaixo foram fixadas antes de qualquer candidata ser baixada ou triada:
+
+- **Leitura cega:** de cada mensagem é lido apenas o `std_msgs/Header` (stamp e `frame_id`) direto dos bytes ROS1. Em
+  imagens e nuvens são lidos também os campos estruturais (dimensões, codificação, `PointField`s, `point_step` e
+  comprimento de `data`). Nenhum payload é desserializado: um teste substitui `AnyReader.deserialize` por uma função
+  que falha e exige aprovação. Os bytes de pose do GT nunca são interpretados, e tópicos de tipo inesperado não têm o
+  conteúdo interpretado.
+- **Critério 5 (payload aceito pelos pipelines):** igualdade exata com a referência de desenvolvimento em tipo ROS,
+  md5 da definição, resolução, codificação, `step`, endianness, `PointField`s (nome, offset, tipo e contagem) e
+  `point_step`, além de comprimento de `data` coerente em todas as mensagens. É um critério conservador: os quatro
+  pipelines congelados foram validados apenas nessa assinatura.
+- **Critério 4 (timestamps):** stamps de header estritamente crescentes por tópico, na ordem de gravação do bag. A
+  interseção comum é `min(últimos) − max(primeiros)` entre câmera esquerda, câmera direita, LiDAR, IMU e GT, e precisa
+  ter pelo menos 30 s.
+- **Critério 2 (GT):** o contêiner precisa ser ROS1 bag com `/gt_poses` `geometry_msgs/PoseStamped`, o mesmo md5 de
+  definição e `frame_id` `/velodyne` em todas as mensagens. A proveniência é declarada no manifesto de aquisição pela
+  liberação oficial e precisa constar em `accepted_releases` (hoje somente `GT_pose_qnew`). Um GT em outro contêiner
+  (por exemplo, TUM) não recebe decisão: a triagem exige uma emenda prévia definindo a equivalência estrutural.
+- **Identidade:** os nomes do bag e do GT devem seguir `{dia}_{num}_VLIO.bag` e `gt_{dia}_{num}_qnew.bag`, e a data
+  local (UTC+8) do primeiro stamp dos sensores e do GT deve coincidir com o dia da sequência. A regra foi conferida nos
+  bags de desenvolvimento (18/10, horário de Pequim).
+- **Hashes:** a triagem calcula md5 e sha256 dos dois arquivos e os grava na saída, onde passam a ser o hash
+  registrado. Todo hash declarado no manifesto de aquisição (por exemplo, o md5 do catálogo) precisa coincidir; um
+  algoritmo desconhecido invalida o manifesto.
+- **Calibração:** os três arquivos usados por `tools/make_configs.py` (`calib_chain.yaml`, `dalsa_gray0_down.yaml`,
+  `dalsa_gray1_down.yaml`) devem existir no diretório declarado e ter o mesmo sha256 da calibração que gerou as
+  configurações congeladas.
+- **Saída:** somente `seq`, decisão, códigos na ordem congelada, hashes, commit, sha256 da referência, versão e
+  horário. A triagem de candidatas exige árvore git limpa. Com `--unseal`, a leitura do GT lacrado é liberada só durante
+  a execução, a permissão `000` é restaurada mesmo em caso de falha e as duas ações ficam em `CUSTODY.log`, ao lado do
+  arquivo.
+
+**Verificação nos dados de desenvolvimento:** `1018-00` e `1018-13` foram triadas com a referência acima e saíram
+`APPROVED`.

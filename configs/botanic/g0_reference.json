@@ -1,0 +1,100 @@
+{
+  "left": {
+    "topic": "/dalsa_gray/left/image_raw",
+    "msgtype": "sensor_msgs/msg/Image",
+    "digest": "060021388200f6f0f447d0fcd9c64743",
+    "schema": {
+      "encoding": "mono8",
+      "height": 600,
+      "is_bigendian": 0,
+      "step": 960,
+      "width": 960
+    }
+  },
+  "right": {
+    "topic": "/dalsa_gray/right/image_raw",
+    "msgtype": "sensor_msgs/msg/Image",
+    "digest": "060021388200f6f0f447d0fcd9c64743",
+    "schema": {
+      "encoding": "mono8",
+      "height": 600,
+      "is_bigendian": 0,
+      "step": 960,
+      "width": 960
+    }
+  },
+  "lidar": {
+    "topic": "/velodyne_points",
+    "msgtype": "sensor_msgs/msg/PointCloud2",
+    "digest": "1158d486dd51d683ce2f1be655c3c181",
+    "schema": {
+      "fields": [
+        [
+          "x",
+          0,
+          7,
+          1
+        ],
+        [
+          "y",
+          4,
+          7,
+          1
+        ],
+        [
+          "z",
+          8,
+          7,
+          1
+        ],
+        [
+          "intensity",
+          12,
+          7,
+          1
+        ],
+        [
+          "ring",
+          16,
+          4,
+          1
+        ],
+        [
+          "time",
+          18,
+          7,
+          1
+        ]
+      ],
+      "height": 1,
+      "is_bigendian": false,
+      "point_step": 22
+    }
+  },
+  "imu": {
+    "topic": "/imu/data",
+    "msgtype": "sensor_msgs/msg/Imu",
+    "digest": "6a62c6daae103f4ff57a132d6f95cec2"
+  },
+  "gt": {
+    "topic": "/gt_poses",
+    "msgtype": "geometry_msgs/msg/PoseStamped",
+    "digest": "d3812c3cbc69362b77dc0b19b345f8f5",
+    "frame_id": "/velodyne",
+    "container": "rosbag1",
+    "accepted_releases": [
+      "GT_pose_qnew"
+    ]
+  },
+  "calibration": {
+    "extrinsics/calib_chain.yaml": "1c7915b17cc4e23de80b657289ab3e7537c0d05bdd9d6d43b6791cfb93c1d61f",
+    "camera_intrinsics/dalsa_gray0_down.yaml": "1a78e0b717e29f4bd4c2aae96cff584b1de6f0380b5cf80e8cc038ab39e9e0cf",
+    "camera_intrinsics/dalsa_gray1_down.yaml": "712b5590f1750540efb54f0012c180af977eecd7f11324e9d039ced4e7b61ce0"
+  },
+  "identity": {
+    "bag_name": "{day}_{num}_VLIO.bag",
+    "gt_name": "gt_{day}_{num}_qnew.bag",
+    "utc_offset_h": 8
+  },
+  "min_overlap_s": 30.0
+}
