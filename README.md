@@ -10,17 +10,23 @@ fusão (protocolo pré-registrado).
 
 ## Onde estamos
 
-**Teste realizado.** Avaliamos se modelos aprendidos conseguem fundir quatro fontes de odometria para estimar, a cada
-scan do LiDAR (≈ 10 Hz), a velocidade 6-DoF do ground truth (`gt_vx … gt_wz`). As fontes são **ORB-SLAM3** e
-**Stella VSLAM** (visual estéreo), **FAST-LIO2** (LiDAR-inercial) e **KISS-ICP** (LiDAR). Para cada método, as entradas
-incluem velocidade em se(3), validade, idade, intervalo e indicadores de qualidade.
+**O que o teste quis responder.** O experimento foi feito para verificar se uma fusão adaptativa consegue estimar o
+movimento do veículo melhor do que usar uma única odometria ou uma combinação fixa. A ideia é que as fontes têm
+características complementares e podem perder cobertura ou precisão em momentos diferentes; por isso, o modelo
+principal (F1) tenta aprender, a cada instante, em quais odometrias confiar e quanto peso dar a cada uma. Esse é o caso
+de uso central do dataset: testar a fusão aprendida das fontes, e não apenas apontar qual algoritmo isolado é o melhor.
 
-O teste usa as duas sequências BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o
-inverso. Comparamos uma rede que aprende pesos para as quatro fontes (F1) e uma regressão direta (F2) com cada odometria
-isolada, a média das fontes válidas e uma regressão ridge. O protocolo completo está em
-[`docs/protocol_fusion_model.md`](docs/protocol_fusion_model.md), os resultados em
-[`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md) e a descrição das colunas, proveniência e limitações em
-[`docs/DATASHEET.md`](docs/DATASHEET.md).
+**O que entrou no teste.** A cada scan do LiDAR (≈ 10 Hz), usamos as estimativas de **ORB-SLAM3** e **Stella VSLAM**
+(visual estéreo), **FAST-LIO2** (LiDAR-inercial) e **KISS-ICP** (LiDAR). Para cada método, as entradas incluem velocidade
+em se(3), validade, idade, intervalo e indicadores de qualidade. O alvo é a velocidade 6-DoF do ground truth
+(`gt_vx … gt_wz`) no mesmo intervalo.
+
+**Como foi avaliado.** Para saber se a fusão generaliza para um percurso não visto, o teste usa as duas sequências
+BotanicGarden com GT em duas dobras: treino em `1018-00` e teste em `1018-13`, depois o inverso. Comparamos a rede que
+aprende pesos para as fontes (F1) e uma regressão direta (F2) com cada odometria isolada, a média das fontes válidas e
+uma regressão ridge. O protocolo completo está em [`docs/protocol_fusion_model.md`](docs/protocol_fusion_model.md), os
+resultados em [`docs/RESULTS_fusion_model.md`](docs/RESULTS_fusion_model.md) e a descrição das colunas, proveniência e
+limitações em [`docs/DATASHEET.md`](docs/DATASHEET.md).
 
 1. **Dataset — concluído.** Esta era a primeira tarefa do projeto. As quatro odometrias foram processadas em quatro
    sequências; os dados estão sincronizados e acompanhados de schema, manifesto de integridade, testes e pipeline
