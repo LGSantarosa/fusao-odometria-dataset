@@ -3,8 +3,9 @@
 > **RASCUNHO REVISADO — 29/10/2026.** Documento atualizado após revisão externa e verificação do pipeline. Ainda não
 > é um protocolo pré-registrado, não autoriza abrir novas sequências de teste e não altera o experimento concluído em
 > `docs/protocol_fusion_model.md`. A triagem do parecer está em
-> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes do
-> novo protocolo.
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29.md` e
+> `docs/REVIEW_RESPONSE_model_comparison_2026-10-29_r2.md`. Os bloqueios G0–G3 abaixo precisam ser resolvidos antes
+> do novo protocolo.
 
 ## 1. Ideia e escopo do artigo
 
@@ -81,17 +82,20 @@ features congeladas.
 
 ### G2 — baseline temporal sem aprendizado
 
-Uma rede temporal pode parecer melhor apenas porque suaviza velocidades ruidosas. O núcleo do estudo incluirá pelo
-menos um filtro temporal causal clássico, além da MLP por passo:
+Uma rede temporal pode parecer melhor apenas porque suaviza velocidades ruidosas. Ao mesmo tempo, uma cabeça W que
+combina apenas twists atuais não deve ser comparada de forma primária com um filtro que pode suavizar se ela própria não
+receber a mesma possibilidade. O núcleo adotará uma pós-filtragem comum:
 
-- **T1 — EMA-B5:** média exponencial causal aplicada à média das fontes válidas, com `α` escolhido somente na validação
-  interna e retenção quando nenhuma fonte estiver válida;
+- **Pα — EMA comum:** a mesma EMA causal, com o mesmo `α`, será aplicada às saídas de B5, F1/MLP-W, MLP-W com janela e
+  CNN/LSTM-W. O valor será escolhido uma vez no piloto de desenvolvimento e congelado antes das grades neurais;
+- **T1 — B5 + Pα:** média das fontes válidas seguida da EMA comum;
 - **T2 — Kalman de twist:** estado de seis velocidades com dinâmica de persistência, atualização pelas fontes válidas,
   covariâncias estimadas apenas no treino e hiperparâmetros escolhidos na validação interna.
 
-T1 é o controle mínimo contra simples filtragem passa-baixa. T2 é o comparador clássico esperado em robótica. Equações,
-regularização das covariâncias, grades e inicialização deverão ser fechadas no protocolo. Se T2 for retirado por motivo
-técnico, a justificativa deverá ser registrada antes do teste.
+Assim, H1 compara **ponderação + a mesma suavização** contra **média + a mesma suavização**. As saídas sem Pα também
+serão reportadas, mas não decidirão H1/H2. T2 permanece como comparador clássico forte; uma alegação confirmatória de
+superioridade sobre ele só será adicionada como H3 se a análise de viabilidade mostrar poder suficiente. Equações,
+inicialização e grades de Pα/T2 serão fechadas no protocolo.
 
 ### G3 — hipótese e regra primárias
 
@@ -100,13 +104,15 @@ validação interna e será tratada como parte do pipeline do modelo principal.
 
 Hipóteses hierárquicas candidatas:
 
-- **H1:** o encoder temporal causal selecionado, com cabeça de ponderação W, supera F1 e o melhor baseline temporal
-  clássico em RMSE linear e angular por uma margem prática pré-fixada, sem degradar RPE além da margem permitida.
-- **H2, testada somente se H1 passar:** o mesmo modelo supera a MLP-W que recebe a mesma janela. Isso separa o efeito
-  da arquitetura do simples acesso ao contexto.
+- **H1:** o encoder temporal causal selecionado, com cabeça W e Pα, supera F1-W + Pα e B5 + Pα em RMSE linear e angular
+  por uma margem prática pré-fixada, sem degradar RPE além da margem permitida.
+- **H2, testada somente se H1 passar:** o mesmo modelo supera MLP-W + Pα com a mesma janela `W`. Isso separa o efeito da
+  arquitetura do simples acesso ao contexto.
+- **H3, opcional e testada somente se H2 passar:** o mesmo sistema supera T2/Kalman. H3 só entrará no protocolo se a
+  análise de viabilidade sustentar essa terceira exigência; caso contrário, T2 será comparação descritiva.
 
 Margens, número mínimo de sequências favoráveis, uso das sementes e regra de não inferioridade do RPE são
-**A DEFINIR ANTES DO PROTOCOLO**. Todo resultado fora de H1/H2 será explicitamente exploratório.
+**A DEFINIR ANTES DO PROTOCOLO**. Todo resultado fora da hierarquia congelada será explicitamente exploratório.
 
 ## 3. Matriz mínima de modelos
 
@@ -114,10 +120,10 @@ Margens, número mínimo de sequências favoráveis, uso das sementes e regra de
 |---|---|---|
 | Fontes | B1–B4 e B5 | descritivo |
 | Não temporal aprendido | B6 ridge | comparador secundário |
-| Por passo | F1/MLP-W | comparador de H1 |
-| Temporal clássico | T1 EMA-B5 e T2 Kalman | comparadores de H1 |
-| Mesmo contexto | MLP-W com janela | controle de H2 |
-| Candidatos | CNN 1D-W causal e LSTM-W | um selecionado na validação interna |
+| Por passo | F1/MLP-W + Pα | comparador de H1 |
+| Temporal clássico | T1 B5 + Pα e T2 Kalman | T1 em H1; T2 descritivo ou H3 |
+| Mesmo contexto | MLP-W com janela + Pα | controle de H2 |
+| Candidatos | CNN 1D-W + Pα e LSTM-W + Pα | um selecionado na validação interna |
 | Saída direta | cabeça D no candidato selecionado | exploratório |
 | Offline | BiLSTM e, se implementado, suavizador RTS | apêndice, fora da disputa online |
 | Fontes removidas | leave-one-source-out no candidato | exploratório |
@@ -138,13 +144,28 @@ Em todos os modelos W:
 - a predição combina **somente os quatro twists atuais válidos em `k`**;
 - twists passados não entram diretamente na combinação, evitando confundir ponderação com suavização aprendida.
 
-O baseline T1/T2 mede separadamente o ganho obtido apenas por filtragem temporal.
+T1 isola o efeito da mesma suavização aplicada à média; T2 representa uma fusão/filtragem clássica completa.
 
-### 3.3 Janela e regime da LSTM
+### 3.3 Pós-filtragem comum Pα
+
+Pα recebe a predição física de cada modelo depois da política de retenção causal e aplica
+`y'_k = α y_k + (1 − α) y'_{k−1}` componente a componente. O mesmo `α`, a mesma inicialização e a mesma regra para
+lacunas serão usados em B5, F1, MLP-W, CNN-W e LSTM-W. O valor de `α` será fixado com B5 nas duas dobras de
+desenvolvimento e não será reotimizado por modelo.
+
+Esse controle impede que um candidato vença apenas por receber uma suavização mais forte. T2 não usa Pα, pois é um
+sistema clássico de fusão/filtragem próprio e será identificado separadamente.
+
+### 3.4 Janela e regime da LSTM
 
 Para a comparação principal, MLP-W, CNN-W e LSTM-W usarão a mesma janela causal de `W` passos. A LSTM será treinada e
 executada com janela fixa e estado reiniciado entre exemplos, nunca em janelas no treino e sequência inteira no teste.
 Estados também serão reiniciados no início de cada sequência.
+
+`W` não fará parte das 18 configurações de cada família. Um único valor será escolhido no piloto pelo LOSO da MLP-W,
+a partir de candidatos pré-declarados e com desempate em favor da menor janela. Isso ocorrerá antes das grades de
+CNN/LSTM; o valor será então imposto à MLP-W, CNN-W e LSTM-W. Assim, H2 compara arquiteturas com exatamente o mesmo
+contexto.
 
 Dentro da janela:
 
@@ -153,7 +174,7 @@ Dentro da janela:
 - lacunas não são removidas nem aproximadas por outra fonte;
 - a janela nunca atravessa a fronteira entre sequências.
 
-### 3.4 BiLSTM
+### 3.5 BiLSTM
 
 A BiLSTM padrão usa futuro e permanecerá somente como referência offline. Ela não poderá ser declarada vencedora do
 sistema de navegação. Para reduzir o núcleo do artigo, sua execução pode ir ao apêndice; um suavizador RTS clássico é
@@ -170,7 +191,30 @@ uma referência offline alternativa.
 Nenhuma linha será embaralhada aleatoriamente entre treino e validação/teste. A unidade externa é a sequência. O modelo
 final será ajustado nos dados de desenvolvimento somente depois de arquitetura, janela e grades estarem congeladas.
 
-### 4.2 Campo receptivo e purga
+### 4.2 Validação interna no desenvolvimento
+
+A seleção principal imitará a generalização para outro percurso por **leave-one-sequence-out (LOSO)**:
+
+1. dobra D-A: treinar em `1018-00` e validar em `1018-13`;
+2. dobra D-B: treinar em `1018-13` e validar em `1018-00`;
+3. agregar a perda das duas dobras e sementes pela regra pré-fixada.
+
+A seleção será sequencial, toda dentro desse LOSO:
+
+1. escolher `α` uma vez para B5 e congelar Pα;
+2. escolher `W` com MLP-W entre candidatos pré-declarados e congelá-lo;
+3. com `α` e `W` fixos, escolher configurações e CNN versus LSTM;
+4. escolher hiperparâmetros de T2 sem usar nenhuma sequência externa.
+
+Dentro da sequência de treino de cada dobra, blocos temporais com purga/embargo serão usados **somente para escolher o
+número de épocas** e detectar instabilidade. Eles não substituirão o LOSO como critério de arquitetura/configuração.
+Normalização, covariâncias e qualquer estado ajustável serão recalculados apenas na sequência de treino da dobra.
+
+Depois da seleção, o modelo externo final será treinado em `1018-00 + 1018-13`. O número final de épocas será uma função
+pré-fixada — candidata: mediana das épocas selecionadas nos blocos internos das duas dobras — e não usará nenhuma
+sequência externa.
+
+### 4.3 Campo receptivo e purga
 
 Definições:
 
@@ -192,7 +236,7 @@ Nas subdobras temporais:
 A implementação usará máscaras distintas para endpoints supervisionados, contexto e linhas embargadas. Um teste de
 índices verificará a fórmula com casos de fronteira, sem depender apenas de inspeção visual.
 
-### 4.3 Testes de causalidade
+### 4.4 Testes de causalidade
 
 - alterar todas as linhas futuras e confirmar que predições anteriores da CNN/LSTM causal não mudam;
 - confirmar que nenhuma janela atravessa sequências;
@@ -209,23 +253,24 @@ Todos os modelos causais compartilharão:
 - perda principal matematicamente equivalente;
 - o mesmo conjunto de sementes e a mesma regra para número de épocas;
 - **18 configurações por família neural**, como na grade atual, salvo emenda anterior ao protocolo;
-- faixas numéricas pré-declaradas de `W`, parâmetros, regularização e épocas;
+- o mesmo `W` e o mesmo Pα, ambos fixados antes das grades neurais;
+- faixas numéricas pré-declaradas de parâmetros, regularização e épocas;
 - um teto de parâmetros definido antes de abrir o teste externo;
 - o mesmo hardware, tamanho de lote e procedimento de medição para eficiência.
 
 O número idêntico de configurações reduz vantagem de busca, mas não garante custo igual; número de treinamentos, tempo e
 energia serão reportados. Baselines clássicos terão grades próprias pré-fixadas, sem inflá-las artificialmente até 18.
 
-CNN ou LSTM será escolhida pela perda média de validação interna conforme regra pré-registrada. Empates favorecerão o
-modelo menor e, persistindo, o de menor latência. A sequência externa não participará da escolha.
+CNN ou LSTM será escolhida pela perda LOSO média nas duas dobras de desenvolvimento conforme regra pré-registrada.
+Empates favorecerão o modelo menor e, persistindo, o de menor latência. A sequência externa não participará da escolha.
 
-Da mesma forma, configurações de T1/T2 e a regra que define o comparador clássico principal serão decididas somente na
-validação interna. T1 e T2 serão reportados no teste, mas nenhum deles poderá ser promovido olhando suas métricas
-externas.
+Pα será escolhido uma vez com B5 no LOSO e então aplicado sem reotimização a todos os modelos W. Configurações de T2
+também serão decididas somente pelo LOSO. T1 e T2 serão reportados no teste, mas nenhum poderá ser promovido olhando
+métricas externas.
 
 Como as janelas sobrepostas não são observações independentes e o conjunto atual tem poucos minutos contínuos, o teto
-de parâmetros e a grade de janelas deverão ser conservadores. Seus valores podem ser estudados no piloto já visto, mas
-serão congelados antes da aquisição de qualquer resultado externo.
+de parâmetros e o valor de `W` deverão ser conservadores. Eles podem ser estudados no piloto já visto, mas serão
+congelados antes das grades finais e da aquisição de qualquer resultado externo.
 
 ## 6. Fontes, ablação e perda inesperada
 
@@ -239,7 +284,8 @@ nenhuma linha será descartada apenas porque uma fonte está ausente.
 Somente o candidato selecionado será retreinado nas quatro condições leave-one-source-out. Para cada condição serão
 reportados:
 
-- métricas globais, com a política pré-definida para linha sem nenhuma fonte;
+- métricas globais, usando retenção causal da última predição quando nenhuma fonte estiver válida e zero antes da
+  primeira predição válida, como no protocolo anterior;
 - cobertura conjunta do conjunto de fontes restante;
 - métricas condicionadas às linhas em que ao menos uma fonte do conjunto está válida;
 - contagem de linhas e duração, para impedir comparação de suportes diferentes sem aviso.
@@ -278,21 +324,37 @@ alinhamento global, mas qualquer deriva grande será destacada.
 
 ### 7.3 Regra candidata
 
-H1 somente será positiva se, para F1 e para o melhor baseline temporal clássico:
+H1 somente será positiva se o candidato W + Pα satisfizer, contra **F1-W + Pα** e contra **T1/B5 + Pα**:
 
 1. a melhora relativa mediana por sequência for pelo menos `δ_v` em RMSE linear e `δ_ω` em RMSE angular;
 2. a quantidade de sequências que excede cada margem satisfizer a regra exata pré-fixada para `k`;
 3. o RPE de 10 m não piorar mais que `δ_RPE`;
 4. todas as métricas estiverem definidas no número mínimo de sequências estabelecido.
 
-H2 será testada somente após H1 e aplicará a mesma lógica contra a MLP-W de janela. Essa ordem hierárquica evita uma
-correção adicional entre H1 e H2. Valores de `δ_v`, `δ_ω`, `δ_RPE`, `k` e a direção do teste ainda dependem da decisão
-de relevância prática e serão fixados antes da abertura.
+H2 será testada somente após H1 e aplicará a mesma lógica contra **MLP-W + Pα com o mesmo `W`**. H3 contra T2/Kalman
+só será confirmatória se estiver no protocolo antes da abertura; caso contrário será descritiva. A ordem hierárquica
+evita uma correção adicional entre hipóteses testadas apenas após a anterior passar. Valores de `δ_v`, `δ_ω`,
+`δ_RPE`, `k` e a direção do teste ainda dependem da decisão de relevância prática e serão fixados antes da abertura.
 
-### 7.4 Secundárias e exploratórias
+### 7.4 Gate de viabilidade estatística
+
+Antes do pré-registro, o piloto LOSO produzirá as diferenças relativas por dobra para todas as condições de H1/H2. Ele
+não fornecerá uma estimativa confiável de poder com apenas duas sequências, mas servirá para detectar contradições
+óbvias — por exemplo, melhora angular acompanhada de piora linear nas duas dobras.
+
+Com `δ_v`, `δ_ω`, `δ_RPE` e a regra por sequência definidos por relevância prática, será feita uma análise de
+sensibilidade para o `k` disponível: probabilidade de satisfazer toda a conjunção sob uma faixa explícita de taxas de
+sucesso e tamanhos de efeito. O limiar de viabilidade será acordado com o orientador antes do protocolo. As margens não
+serão reduzidas para tornar o teste aprovável.
+
+Se a regra tiver chance desprezível de passar ou `k` não permitir a inferência escolhida, o estudo será simplificado ou
+rotulado exploratório **antes** de qualquer abertura externa.
+
+### 7.5 Secundárias e exploratórias
 
 - RMSE das seis componentes;
 - RPE, ATE e velocidade integrada;
+- saídas de B5/F1/MLP/CNN/LSTM antes de Pα, para separar ponderação e pós-filtragem;
 - primárias por quantidade e identidade das fontes válidas;
 - erro antes, durante e depois da perda de uma fonte e tempo de recuperação;
 - pesos da cabeça W e sua estabilidade;
@@ -308,14 +370,12 @@ por sequência.
 O dataset atual contém uma realização oficial de cada VO, embora sua variabilidade entre execuções já esteja
 documentada. Um modelo temporal pode aprender padrões específicos dessa realização.
 
-Antes do protocolo deverá ser escolhida uma destas opções:
+O teste principal usará uma única realização oficial: nas sequências existentes, a realização do dataset v1; nas novas,
+a primeira execução completa do pipeline congelado que satisfizer critérios operacionais definidos sem GT. Uma nova
+tentativa só poderá ocorrer por falha operacional prevista no protocolo, nunca pelo erro da trajetória.
 
-1. repetir ORB-SLAM3 e Stella nas sequências de desenvolvimento e teste segundo número/semente pré-fixados, agregando a
-   sensibilidade sem selecionar a melhor execução; ou
-2. manter uma execução oficial definida por regra operacional anterior ao GT e declarar explicitamente que a
-   generalização entre realizações não foi medida.
-
-Nenhuma execução poderá ser escolhida pelo erro contra o GT externo.
+Repetições de ORB-SLAM3 e Stella, se executadas em número pré-fixado e ainda no fluxo cego, entrarão apenas como análise
+de sensibilidade. Nenhuma repetição poderá substituir a realização principal ou ser escolhida pelo GT externo.
 
 ## 9. Plano de implementação
 
@@ -323,14 +383,14 @@ Nenhuma execução poderá ser escolhida pelo erro contra o GT externo.
 
 - inventariar dados externos e fechar o status confirmatório ou exploratório;
 - implementar e validar o modo cego;
-- fechar baseline temporal, hipótese, regra e matriz mínima;
+- fechar Pα, T2, hipótese, regra e matriz mínima;
 - definir hardware-alvo ou retirar eficiência como pergunta de pesquisa.
 
 ### Fase 1 — infraestrutura sem teste externo
 
 - criar janelas, máscaras de endpoint/contexto e purga/embargo;
 - separar encoder da cabeça W/D;
-- implementar T1, T2, MLP-W com janela, CNN-W, LSTM-W e referências exploratórias;
+- implementar Pα, T1, T2, MLP-W com janela, CNN-W, LSTM-W e referências exploratórias;
 - preservar F1/F2 atuais sem alterar seus resultados;
 - gravar configuração, semente, commit e hashes em cada artefato.
 
@@ -341,12 +401,15 @@ Nenhuma execução poderá ser escolhida pelo erro contra o GT externo.
 - tarefa em que o alvo depende de histórico conhecido;
 - tarefa em que o alvo é constante ou suave, verificando se o ganho vem apenas de filtragem;
 - comparação de T1/T2 e modelos aprendidos sob ruído controlado;
+- teste de que Pα usa exatamente os mesmos parâmetros e ordem de operações em todas as saídas W;
 - determinismo por semente e registro de falhas;
 - modo cego e abertura com preservação das features.
 
 ### Fase 3 — piloto nos dados já vistos
 
-- estimar custo e estabilidade e fechar faixas de janela/capacidade;
+- fixar `W` e `α` antes das grades neurais;
+- executar o LOSO de desenvolvimento e fechar faixas de capacidade;
+- estimar custo, estabilidade e a viabilidade da conjunção H1/H2 para o `k` disponível;
 - identificar defeitos de implementação;
 - não apresentar o piloto como confirmação;
 - congelar código e decisões antes de qualquer resultado externo.
@@ -354,6 +417,7 @@ Nenhuma execução poderá ser escolhida pelo erro contra o GT externo.
 ### Fase 4 — revisão e pré-registro
 
 - revisar o plano com orientador e revisor externo;
+- somente prosseguir como confirmatório se G0 e o gate de viabilidade forem satisfeitos;
 - escrever novo `docs/protocol_*.md` com todos os números ainda pendentes;
 - registrar protocolo, commit, ambiente, modelos e manifesto antes da abertura.
 
@@ -396,7 +460,7 @@ Condicionada à aprovação de G0–G3:
 
 Título de trabalho:
 
-> **Causal Temporal Fusion of Heterogeneous Odometry Sources beyond Classical Smoothing**
+> **Learned Temporal Fusion versus Classical Smoothing for Heterogeneous Odometry Sources**
 
 BiLSTM, cabeça direta e eficiência sem hardware-alvo não sustentarão a alegação principal. O resultado negativo do
 primeiro experimento permanecerá visível e nenhuma conclusão será generalizada para ambientes ou sensores não testados.
@@ -406,8 +470,9 @@ primeiro experimento permanecerá visível e nenhuma conclusão será generaliza
 1. Quantas sequências com GT ainda não analisadas existem e quais passam critérios estruturais pré-fixados?
 2. Quem pode custodiar o GT ou executar a abertura única?
 3. O artigo será confirmatório ou um benchmark piloto se `k` for pequeno?
-4. T2/Kalman entra obrigatoriamente no núcleo e qual formulação será usada?
-5. Quais margens `δ_v`, `δ_ω` e `δ_RPE` representam melhora prática?
-6. A VO será repetida ou sua realização única ficará como limitação explícita?
-7. Haverá aumento por remoção de fontes no treino?
-8. Existe hardware-alvo? Sem ele, eficiência será apenas uma tabela descritiva.
+4. Qual formulação e grade serão usadas em T2/Kalman?
+5. Quais margens `δ_v`, `δ_ω` e `δ_RPE` representam melhora prática e qual chance mínima torna H1 viável?
+6. H3 contra Kalman terá poder para ser confirmatória ou ficará descritiva?
+7. Quantas repetições de VO cabem na análise de sensibilidade?
+8. Haverá aumento por remoção de fontes no treino?
+9. Existe hardware-alvo? Sem ele, eficiência será apenas uma tabela descritiva.
