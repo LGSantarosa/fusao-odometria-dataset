@@ -1,0 +1,13 @@
+{
+  "seq": "1006-01",
+  "source": "https://scidata.sjtu.edu.cn/records/kfjy8-ex881 (md5 do registro, consultado em 29/10/2026)",
+  "bag": {
+    "path": "data/raw/botanic/1006_01_VLIO.bag",
+    "md5": "cb427d7aac23fb03d35ee435e2b66e5a"
+  },
+  "gt": {
+    "path": "data/sealed/botanic_gt/gt_1006_01_qnew.bag",
+    "release": "GT_pose_qnew"
+  },
+  "calibration_dir": "data/raw/botanic/calib_params"
+}
