@@ -12,6 +12,11 @@
 > desempenho posterior das odometrias e equivalência obrigatória de proveniência/formato do GT. Nenhum dado externo
 > foi aberto para produzir esta emenda.
 
+> **Emenda de custódia — 29/10/2026.** No PC que guarda os dados do desenvolvimento, verificou-se que o
+> `GT_pose_qnew.zip` baixado para `1018-00`/`1018-13` também contém o GT de cinco candidatas. Os arquivos foram
+> isolados sem abertura do conteúdo; evidência e procedimento estão na seção 8. A seção 4 passa a distinguir bag e GT
+> locais.
+
 ## 1. Resultado executivo
 
 O catálogo oficial contém 33 sequências. Dez delas possuem links públicos tanto para o `VLIO-rosbag` quanto para o
@@ -120,16 +125,18 @@ distribuições ou desempenho.
 
 ## 4. Candidatas públicas ainda não usadas
 
-| Sequência | Grupo no catálogo oficial | VLIO público | GT público | Arquivo local | Decisão estrutural |
-|---|---|---:|---:|---:|---|
-| `1005-00` | sete amostras principais | sim | sim | não | pendente |
-| `1005-01` | sete amostras principais | sim | sim | não | pendente |
-| `1005-05` | tabela pública adicional | sim | sim | não | pendente |
-| `1005-07` | sete amostras principais | sim | sim | não | pendente |
-| `1006-01` | sete amostras principais | sim | sim | não | pendente |
-| `1006-03` | tabela pública adicional | sim | sim | não | pendente |
-| `1008-01` | tabela pública adicional | sim | sim | não | pendente |
-| `1008-03` | sete amostras principais | sim | sim | não | pendente |
+| Sequência | Grupo no catálogo oficial | VLIO público | GT público | Bag local | GT local | Decisão estrutural |
+|---|---|---:|---:|---:|---:|---|
+| `1005-00` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1005-01` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1005-05` | tabela pública adicional | sim | sim | não | não | pendente |
+| `1005-07` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1006-01` | sete amostras principais | sim | sim | não | lacrado | pendente |
+| `1006-03` | tabela pública adicional | sim | sim | não | não | pendente |
+| `1008-01` | tabela pública adicional | sim | sim | não | não | pendente |
+| `1008-03` | sete amostras principais | sim | sim | não | lacrado | pendente |
+
+“Lacrado” significa presente em `data/sealed/botanic_gt/`, sem permissão de leitura e não aberto (seção 8).
 
 O README oficial lista os mesmos tópicos usados por `configs/botanic/dataset.yaml`: estéreo cinza, VLP-16, Xsens e
 GT. Ele também publica intrínsecas e extrínsecas e possui chaves de alinhamento para as sequências públicas; isso
@@ -166,6 +173,9 @@ mostram que o conjunto completo ocupa centenas de gigabytes, portanto não é se
 volume. É necessário definir um destino com capacidade suficiente ou um fluxo auditável de aquisição e arquivamento
 sequência a sequência. Nenhum download volumoso será iniciado implicitamente.
 
+No PC que guarda os dados de desenvolvimento, o volume local tinha 431 GiB livres em 29/10/2026. Isso permite um
+fluxo sequência a sequência, mas não a aquisição integral simultânea.
+
 ## 7. Decisão G0 e próximo gate
 
 - **G0-A — existência catalográfica:** aprovado; existem oito candidatas públicas novas com GT anunciado.
@@ -177,3 +187,49 @@ sequência a sequência. Nenhum download volumoso será iniciado implicitamente.
 
 O próximo passo seguro é implementar e testar a triagem estrutural e o modo cego G1 sem dados externos. Depois disso,
 os bags podem ser adquiridos, hasheados e classificados sem executar odometrias nem expor GT numérico.
+
+## 8. Custódia do GT já presente localmente (emenda de 29/10/2026)
+
+### 8.1 Achado
+
+O arquivo `data/raw/botanic/GT_pose_qnew.zip`, baixado em 14/10/2026 para obter o GT de `1018-00` e `1018-13`, contém
+sete bags de GT. Foram listados apenas os nomes do arquivo compactado e do diretório extraído:
+
+- desenvolvimento: `gt_1018_00_qnew.bag`, `gt_1018_13_qnew.bag`;
+- candidatas: `gt_1005_00_qnew.bag`, `gt_1005_01_qnew.bag`, `gt_1005_07_qnew.bag`, `gt_1006_01_qnew.bag`,
+  `gt_1008_03_qnew.bag`.
+
+O GT de `1005-05`, `1006-03` e `1008-01` não faz parte desse arquivo. A primeira versão do inventário, feita em outra
+máquina, não sabia da existência desses cinco arquivos.
+
+### 8.2 Evidência de não abertura
+
+O volume é montado com `relatime`: uma leitura atualiza o `atime` sempre que o valor anterior tem mais de 24 h ou não é
+posterior ao `mtime`. Os cinco bags candidatos preservavam `atime = mtime` iguais à data de criação no arquivo
+compactado (01/06/2024), restaurada pelo `unzip`. Os bags de `1018-00` e `1018-13` mostravam leituras em 14/10/2026 e
+15/10/2026. Assim, não há registro de leitura dos cinco GTs candidatos desde a extração.
+
+| Arquivo | Bytes | `atime` = `mtime` |
+|---|---:|---|
+| `gt_1005_00_qnew.bag` | 812080 | 2024-06-01 19:37:40 -0300 |
+| `gt_1005_01_qnew.bag` | 639998 | 2024-06-01 19:39:38 -0300 |
+| `gt_1005_07_qnew.bag` | 753839 | 2024-06-01 19:44:20 -0300 |
+| `gt_1006_01_qnew.bag` | 1025804 | 2024-06-01 19:46:14 -0300 |
+| `gt_1008_03_qnew.bag` | 862398 | 2024-06-01 19:33:42 -0300 |
+
+Essa evidência é circunstancial: `atime` é metadado alterável e não prova a ausência de leitura por outro meio. O
+`atime` do `.zip` registra 29/10/2026 13:33:10, causado por `unzip -l` durante este levantamento. Esse comando lê
+somente o diretório central do arquivo (nomes e tamanhos) e não descompacta nenhum membro.
+
+### 8.3 Isolamento
+
+Em 29/10/2026, os cinco bags candidatos e o `GT_pose_qnew.zip` foram movidos por renomeação no mesmo sistema de
+arquivos, sem cópia nem leitura, para `data/sealed/botanic_gt/` (fora do git). As permissões dos arquivos passaram a
+`000`. Tamanhos, `atime` e `mtime` foram conferidos depois do movimento e permaneceram iguais. Os dois GTs de
+desenvolvimento continuam em `data/raw/botanic/GT_pose_qnew/GT_pose_qnew/`.
+
+Ainda não foram calculados hashes desses cinco arquivos, pois isso exige lê-los. O hash e a verificação de
+proveniência e esquema (critério 2 da seção 3) serão feitos pela triagem cega. Nenhuma ferramenta do pipeline poderá
+ler `data/sealed/`; somente a triagem estrutural e a abertura única de G1 poderão restaurar a permissão de leitura, e
+cada restauração deverá ser registrada. O uso de um custodiante externo continua preferível e em aberto (seção 12 do
+plano).
