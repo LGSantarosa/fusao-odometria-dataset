@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ofd import config, evaluate, extract, fusion_data, fusion_eval, schema, sync, tracks
+from ofd import config, evaluate, extract, fusion_data, fusion_eval, schema, se3, sync, tracks
 from ofd.g0_triage import _custody, _git
 
 VERSION = 1
@@ -263,7 +263,12 @@ def unlock(feature_manifest, prediction_manifest, acquisition_dir, out_dir, tria
             raise BlindError(f"{seq}: manifesto de aquisição de {acq['seq']}")
         gt_ts, gt_Ts, dropped, sha = _read_gt(Path(acq["gt"]["path"]), _expected_gt_sha(acq, triage_dir, seq),
                                               cfg.topics.get("gt", "/gt_poses"), seq, commit)
-        gts[seq] = {"path": acq["gt"]["path"], "sha256": sha, "dropped_nonfinite": dropped}
+        # mesmo caminho do desenvolvimento (extract --gt-bag → gt.tum → load_tum), inclusive o arredondamento do TUM
+        tum = out_dir / "gt" / f"{seq}.tum"
+        tum.parent.mkdir(parents=True, exist_ok=True)
+        se3.save_tum(tum, gt_ts, gt_Ts)
+        gt_ts, gt_Ts = se3.load_tum(tum)
+        gts[seq] = {"path": acq["gt"]["path"], "sha256": sha, "dropped_nonfinite": dropped, "tum": _entry(tum)}
         table = pd.read_parquet(s["table"]["path"])
         ev = evaluation_table(table, s["runs_dir"], cfg, gt_ts, gt_Ts)
         ev_path = out_dir / "evaluation" / f"{seq}.parquet"
