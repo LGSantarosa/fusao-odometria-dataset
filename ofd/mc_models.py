@@ -116,13 +116,20 @@ def val_loss_after_p_alpha(model, head, Xw, tw, valid, y, sigma, alpha, val_rows
     return loss(out, y, sigma, val_rows)
 
 
+def checkpoint_schedule(max_updates, early=(50, 100), every=200):
+    """Checkpoints em 50, 100 e depois a cada 200 atualizações até o máximo (inclusive)."""
+    steps = [s for s in early if s < max_updates] + list(range(every, max_updates + 1, every))
+    return sorted(set(steps) | {max_updates})
+
+
 def train(model, head, Xw, Y, tw, valid, sigma, train_rows, updates, seed, weight_decay=0.0, lr=LR, batch=BATCH,
-          checkpoint_every=None, val=None):
+          checkpoints=None, val=None):
     """Adam por exatamente `updates` chamadas a `optimizer.step()`.
 
     `train_rows`: endpoints de treino (alvo finito exigido; na cabeça W também ao menos uma fonte válida, pois nenhum
-    parâmetro afeta as outras linhas). `val`: função model → perda de validação depois de Pα, avaliada a cada
-    `checkpoint_every` atualizações. Perda não finita → `failed`. Devolve checkpoints e o melhor orçamento.
+    parâmetro afeta as outras linhas). `val`: função model → perda de validação depois de Pα, avaliada nos números de
+    atualizações em `checkpoints`. Perda não finita → `failed`. Devolve checkpoints, o melhor orçamento (menor perda;
+    empate → menos atualizações) e `saturated` quando o melhor é o último checkpoint.
     """
     torch.use_deterministic_algorithms(True)
     rows = np.asarray(train_rows, bool) & np.isfinite(Y).all(axis=1)
@@ -138,6 +145,7 @@ def train(model, head, Xw, Y, tw, valid, sigma, train_rows, updates, seed, weigh
     twt, vt = torch.from_numpy(tw[idx_all]), torch.from_numpy(valid[idx_all])
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     gen = torch.Generator().manual_seed(seed)
+    marks = set(checkpoints or ())
     order = []
     for step in range(1, updates + 1):
         if not order:
@@ -152,7 +160,7 @@ def train(model, head, Xw, Y, tw, valid, sigma, train_rows, updates, seed, weigh
         opt.zero_grad()
         batch_loss.backward()
         opt.step()
-        if val is not None and checkpoint_every and (step % checkpoint_every == 0 or step == updates):
+        if val is not None and step in marks:
             v = val(model)
             if not np.isfinite(v):
                 res["failed"] = True
@@ -160,4 +168,5 @@ def train(model, head, Xw, Y, tw, valid, sigma, train_rows, updates, seed, weigh
             res["checkpoints"].append((step, v))
     if res["checkpoints"]:
         res["best_updates"] = min(res["checkpoints"], key=lambda c: (c[1], c[0]))[0]
+        res["saturated"] = res["best_updates"] == res["checkpoints"][-1][0]
     return res

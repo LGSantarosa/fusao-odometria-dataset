@@ -197,7 +197,7 @@ def test_update_budget_is_exact_and_reshuffles_across_epochs():
     calls = {"n": 0}
     rows = np.ones(50, bool)
     res = mc_models.train(model, "W", Xw, Y, tw, valid, np.ones(6), rows, updates=7, seed=0, batch=16,
-                          checkpoint_every=1, val=lambda m: calls.__setitem__("n", calls["n"] + 1) or 1.0)
+                          checkpoints=range(1, 8), val=lambda m: calls.__setitem__("n", calls["n"] + 1) or 1.0)
     assert [c[0] for c in res["checkpoints"]] == list(range(1, 8)) and calls["n"] == 7
     assert res["n_train"] == int(valid.any(axis=1).sum())        # cabeça W: linha sem fonte válida não treina
 
@@ -248,7 +248,7 @@ def test_history_dependent_task_needs_the_window():
     for family, W in (("STEP", 1), ("MLPW", 5)):
         Xw = mc_data.windows(X, W)
         m = mc_models.build(family, "W", X.shape[1], W, {"width": 32, "layers": 1}, seed=0)
-        res = mc_models.train(m, "W", Xw, y, tw, valid, np.ones(6), tr, updates=1500, seed=0, checkpoint_every=500,
+        res = mc_models.train(m, "W", Xw, y, tw, valid, np.ones(6), tr, updates=1500, seed=0, checkpoints=(500, 1000, 1500),
                               val=lambda mm: mc_models.val_loss_after_p_alpha(mm, "W", Xw, tw, valid, y, np.ones(6),
                                                                               1.0, va))
         out[family] = res["checkpoints"][-1][1]
@@ -265,3 +265,37 @@ def test_val_loss_runs_p_alpha_over_whole_sequence():
     full = mc_filters.apply_p_alpha(mc_models.predict_raw(model, "W", Xw, tw, valid, np.ones(6)), 0.3)
     assert mc_models.val_loss_after_p_alpha(model, "W", Xw, tw, valid, Y, np.ones(6), 0.3, val) == pytest.approx(
         np.mean((full[40:] - Y[40:]) ** 2))
+
+
+def test_checkpoint_schedule_and_saturation():
+    assert mc_models.checkpoint_schedule(1000) == [50, 100, 200, 400, 600, 800, 1000]
+    assert mc_models.checkpoint_schedule(8000)[:4] == [50, 100, 200, 400] and mc_models.checkpoint_schedule(8000)[-1] == 8000
+    assert mc_models.checkpoint_schedule(150) == [50, 100, 150]
+    X, tw, valid = _batch(n=50)
+    Y = np.random.default_rng(3).normal(size=(50, 6))
+    model = mc_models.build("STEP", "W", X.shape[1], 1, CFG["STEP"], seed=0)
+    losses = iter([3.0, 2.0, 1.0])
+    res = mc_models.train(model, "W", mc_data.windows(X, 1), Y, tw, valid, np.ones(6), np.ones(50, bool), updates=150,
+                          seed=0, checkpoints=mc_models.checkpoint_schedule(150), val=lambda m: next(losses))
+    assert res["best_updates"] == 150 and res["saturated"]
+
+
+def test_e_gt_requires_autocorrelation_to_stay_below_threshold():
+    rng = np.random.default_rng(0)
+    white = rng.normal(size=(3000, 6))
+    assert mc_data.e_gt(white) == 1                                  # ruído branco: |ρ| < 0,2 desde o lag 1
+    ar = np.zeros((3000, 6))
+    for t in range(1, 3000):
+        ar[t] = 0.8 * ar[t - 1] + rng.normal(size=6)
+    e = mc_data.e_gt(ar)
+    assert 6 <= e <= 10                                              # ρ(l) = 0,8^l < 0,2 a partir de l ≈ 8
+    smooth = np.sin(np.arange(3000) / 200)[:, None] * np.ones(6)
+    assert mc_data.e_gt(smooth) == 50                                # não cai até 50 → teto
+    const = white.copy()
+    const[:, 2] = 1.0
+    assert mc_data.e_gt(const) == 50                                 # indefinida → teto
+    gaps = ar.copy()
+    gaps[::7, 0] = np.nan
+    assert abs(mc_data.e_gt(gaps) - e) <= 2                          # pares com NaN são ignorados
+    periodic = np.sin(np.arange(3000) * 2 * np.pi / 50)[:, None] * np.ones(6) + 0.01 * white
+    assert mc_data.e_gt(periodic) == 50                              # |ρ(50)| ≈ 1: volta a subir → teto

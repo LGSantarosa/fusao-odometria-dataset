@@ -59,8 +59,9 @@ def t1(tw, valid, alpha):
 class TwistKalman:
     """T2: estado = 6 velocidades, dinâmica de persistência (passeio aleatório), uma atualização por fonte válida.
 
-    Covariâncias diagonais estimadas só no treino: R_m = variância de (twist_m − alvo) nas linhas em que m é válido;
-    Q = variância da diferença do alvo entre linhas consecutivas. Hiperparâmetros: escalas `q_scale` e `r_scale`.
+    Covariâncias diagonais estimadas exclusivamente no treino: R_m = variância de (twist_m − alvo) nas linhas em que m é
+    válido; Q = variância da diferença do alvo entre linhas consecutivas; ambas com piso numérico `floor` aplicado no
+    treino. Hiperparâmetros: `q_scale` e `r_scale` multiplicam Q e R_m (já com o piso), inclusive na inicialização.
     Componentes independentes (matrizes diagonais), portanto o filtro é escalar por componente.
     Antes da primeira fonte válida a saída é zero; nessa linha o estado é a fusão por informação das medidas.
     """

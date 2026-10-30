@@ -25,6 +25,35 @@ def memory_rows(alpha, eps=EPS):
     return 0 if alpha == 1 else math.ceil(math.log(eps) / math.log(1 - alpha))
 
 
+def _lag_corr(x, lag):
+    """Correlação de Pearson entre x_t e x_{t+lag} nos pares com os dois valores finitos; None se indefinida."""
+    a, b = x[:-lag], x[lag:]
+    ok = np.isfinite(a) & np.isfinite(b)
+    if ok.sum() < 3:
+        return None
+    a, b = a[ok], b[ok]
+    sa, sb = a.std(), b.std()
+    if sa == 0 or sb == 0:
+        return None
+    return float(np.mean((a - a.mean()) * (b - b.mean())) / (sa * sb))
+
+
+def e_gt(y, threshold=0.2, max_lag=50):
+    """E_gt da sequência de treino: por componente do alvo, o menor L ≤ max_lag tal que |ρ(l)| < threshold para
+    todo l em [L, max_lag] (ρ indefinida conta como não abaixo); sem tal L, max_lag. E_gt = máximo entre componentes."""
+    y = np.asarray(y, float)
+    out = 0
+    for c in range(y.shape[1]):
+        below = [r is not None and abs(r) < threshold for r in (_lag_corr(y[:, c], l) for l in range(1, max_lag + 1))]
+        L = max_lag
+        for l in range(max_lag, 0, -1):
+            if not below[l - 1]:
+                break
+            L = l
+        out = max(out, L if below[-1] else max_lag)
+    return out
+
+
 def embargo(W, alpha, e_gt=0, h=H, eps=EPS):
     """(E_antes, E_depois) = (max(E_gt, R + M_α), max(E_gt, R))."""
     R = receptive_field(W, h)
@@ -74,5 +103,6 @@ def inner_folds(n, e_before, e_after, k=fd.N_BLOCKS):
 
 
 def embargo_fraction(n, e_before, e_after, k=fd.N_BLOCKS):
-    """Maior fração da sequência consumida pelos embargos de uma subdobra (critério estrutural, seção 4.3)."""
+    """Maior fração consumida pelos embargos de uma subdobra (critério estrutural, seção 4.3); denominador = total
+    de linhas `n` da sequência de treino da dobra LOSO."""
     return max(float(f["embargo"].mean()) for f in inner_folds(n, e_before, e_after, k))
