@@ -2,10 +2,11 @@
 
 O link é resolvido pelo token anônimo de compartilhamento ("Badger") usado pelo próprio site do OneDrive. O arquivo
 é gravado em `<dest>.part`; os blocos concluídos ficam em `<dest>.part.done`, de modo que uma interrupção retoma do
-ponto em que parou. No fim, confere o tamanho e o sha256 informados pelo OneDrive e o md5 do manifesto de aquisição.
-Não abre nem interpreta o conteúdo.
+ponto em que parou. No fim, confere o tamanho e o sha256 informados pelo OneDrive e os hashes declarados no manifesto
+de aquisição (md5 da SJTU, quando existe; sha256). Não abre nem interpreta o conteúdo. Com `--item gt`, o GT baixado é
+lacrado (permissão 000) assim que verificado, e a aquisição fica registrada em `CUSTODY.log`, ao lado do arquivo.
 
-    python -m tools.fetch_onedrive configs/botanic/g0_acquisition/1005-01.json [--workers 8]
+    python -m tools.fetch_onedrive configs/botanic/g0_acquisition/1005-01.json [--item bag|gt] [--workers 8]
 """
 import argparse
 import base64
@@ -14,9 +15,11 @@ import json
 import os
 import sys
 import threading
+import subprocess
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 TOKEN_URL = "https://api-badgerp.svc.ms/v1.0/token"
@@ -112,9 +115,11 @@ def file_hashes(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("manifest")
+    ap.add_argument("--item", choices=("bag", "gt"), default="bag")
     ap.add_argument("--workers", type=int, default=8)
     a = ap.parse_args()
-    m = json.loads(Path(a.manifest).read_text())["bag"]
+    manifest = json.loads(Path(a.manifest).read_text())
+    m = manifest[a.item]
     dest = Path(m["path"])
     if dest.exists():
         print(f"{dest} já existe; nada a fazer")
@@ -124,10 +129,17 @@ def main():
         sys.exit(f"link aponta para {d.name}, esperado {dest.name}")
     d.run()
     md5, sha = file_hashes(d.part)
-    if sha != d.sha256 or md5 != m["md5"].lower() or d.part.stat().st_size != d.size:
+    if (sha != d.sha256 or sha != m.get("sha256", sha).lower() or md5 != m.get("md5", md5).lower()
+            or d.part.stat().st_size != d.size):
         sys.exit(f"{dest.name}: hash divergente (md5 {md5}, sha256 {sha}); .part mantido para inspeção")
     d.part.rename(dest)
     d.done_path.unlink()
+    if a.item == "gt":
+        dest.chmod(0)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        with open(dest.parent / "CUSTODY.log", "a") as f:
+            f.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "file": dest.name, "action": "acquire_seal",
+                                "seq": manifest["seq"], "commit": commit, "by": "tools.fetch_onedrive"}) + "\n")
     print(f"{dest.name} OK md5 {md5} sha256 {sha}")
 
 

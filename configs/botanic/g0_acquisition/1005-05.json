@@ -1,0 +1,15 @@
+{
+  "seq": "1005-05",
+  "source": "tabela adicional do catálogo oficial (README 84c4806): links OneDrive do VLIO-rosbag e do GT-pose; sha256 do OneDrive; fora do registro SJTU (sem md5); consultados em 30/10/2026",
+  "bag": {
+    "path": "data/raw/botanic/1005_05_VLIO.bag",
+    "onedrive": "https://1drv.ms/u/s!AhA4pMEcWxdkgsZGQjHQYLu9U_twAQ?e=AacAQB",
+    "sha256": "d15adbbf7582e6c9fb95da709f29c916fb7b3533c91b88b1c54acaaa08c6c6db"
+  },
+  "gt": {
+    "path": "data/sealed/botanic_gt/gt_1005_05_qnew.bag",
+    "onedrive": "https://1drv.ms/u/s!AhA4pMEcWxdkgsgwphhKViT2sWniRg?e=mcPXj5",
+    "sha256": "33d9650b82135c2b8818932da693523811906699124d7037989dbb4de45dc1ca"
+  },
+  "calibration_dir": "data/raw/botanic/calib_params"
+}
