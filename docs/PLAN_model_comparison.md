@@ -98,6 +98,35 @@ Quando possível, uma pessoa que não escolhe modelos deverá custodiar o GT ou 
 deverão provar que o modo cego não grava métricas, alvos nem erros e que a anexação do GT não muda nenhum byte lógico das
 features congeladas.
 
+**Estado da implementação — 30/10/2026.** Passos 3–6 implementados e testados apenas com dados sintéticos e com
+`1018-00`/`1018-13`; nenhuma das oito candidatas foi lida ou processada além da triagem estrutural. O job cego nas oito
+só será executado, uma única vez, depois do pré-registro e do congelamento completo (passo 2).
+
+- **Passo 3:** `ofd.extract --blind` não inclui o tópico de GT na leitura (inclusive quando está dentro do bag), recusa
+  `--gt-bag`/`--gt-tum` e não grava `gt.tum`.
+- **Passo 4:** `ofd.build_dataset --blind` recusa diretório com `gt.tum` e grava só as colunas `metadata` e `feature`
+  (`schema.blind_schema`). `scripts/run_sequence_blind.sh` encadeia extração, odometrias e tabela, sem GT e sem
+  `ofd.evaluate`, e recusa repetir uma sequência. `python -m ofd.blind predict` gera predições dos modelos registrados;
+  por ora só B5, que não exige treino. Os modelos congelados nas fases 1–3 entram no mesmo registro.
+- **Passo 5:** `freeze-features` e `predict` gravam manifestos com sha256 de arquivo e hash do conteúdo lógico das
+  tabelas, runs, configuração, protocolo, `requirements.lock`/`pyproject.toml` e commit (árvore limpa obrigatória). Um
+  manifesto nunca é sobrescrito, e predição e abertura recalculam todos os hashes antes de prosseguir.
+- **Passo 6:** `python -m ofd.blind unlock` verifica commit e manifestos; só então cria `UNLOCK_STARTED`, que impede
+  nova tentativa no mesmo diretório mesmo após falha. Cada GT é deslacrado só durante a leitura, com `unlock_read` e
+  `reseal` em `CUSTODY.log`, e tem o sha256 conferido com o da aquisição ou da triagem. Passa pelo mesmo TUM do
+  desenvolvimento e é anexado em `evaluation/<seq>.parquet`, separado das features, cuja integridade é conferida de
+  novo. Saem métricas das fontes (`ofd.evaluate`), RMSE de v e ω das predições e `unlock_manifest.json`. A regra de
+  decisão continua a ser fixada pelo protocolo.
+- **Testes:** `tests/test_blind.py` (14), entre eles: GT nunca desserializado na extração cega; saídas cegas sem
+  colunas de alvo/avaliação; adulteração bloqueia predição e abertura antes de ler GT; abertura única; falha após o
+  início consome a abertura e relacra; GT anexado igual ao da montagem aberta.
+- **Ensaio com `1018-00`/`1018-13`:** a extração cega completa reproduziu byte a byte stamps e imagens da extração
+  aberta (nuvens conferidas por amostra). A tabela cega coincidiu, no hash lógico, com as colunas cegas da tabela
+  aberta. Depois da abertura com os GTs lacrados em cópia, GT, erros por método e métricas das fontes coincidiram
+  exatamente com `data/output` (diferença 0). `scripts/run_sequence_blind.sh` rodou de ponta a ponta em 30 s de
+  `1018-00`: as quatro odometrias concluíram, a tabela passou no contrato com o schema cego, nenhum `gt.tum` foi gravado e
+  a segunda execução foi recusada.
+
 ### G2 — baseline temporal sem aprendizado
 
 Uma rede temporal pode parecer melhor apenas porque suaviza velocidades ruidosas. Ao mesmo tempo, uma cabeça W que
