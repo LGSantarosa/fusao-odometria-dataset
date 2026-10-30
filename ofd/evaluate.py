@@ -119,6 +119,10 @@ def coverage(df_seq, method, state, continuous_frame=False):
 
 def evaluate_sequence(seq_dir, runs_dir, table, T_L_S, min_dur_s=30.0, min_len_m=20.0):
     gt_ts, gt_Ts = se3.load_tum(Path(seq_dir) / "gt.tum")
+    return evaluate_methods(Path(seq_dir).name, runs_dir, table, T_L_S, gt_ts, gt_Ts, min_dur_s, min_len_m)
+
+
+def evaluate_methods(seq, runs_dir, table, T_L_S, gt_ts, gt_Ts, min_dur_s=30.0, min_len_m=20.0):
     total = gt_path_length(table)
     rows = []
     for m in schema.METHODS:
@@ -126,7 +130,7 @@ def evaluate_sequence(seq_dir, runs_dir, table, T_L_S, min_dur_s=30.0, min_len_m
         tr, _, meta = tracks.load_run(run)
         sm = segment_metrics(tr, T_L_S[m], gt_ts, gt_Ts, min_dur_s, min_len_m)
         el = sm[sm["eligible"]]
-        rows.append({"seq": Path(seq_dir).name, "method": m, "uses_imu": meta.get("uses_imu", False),
+        rows.append({"seq": seq, "method": m, "uses_imu": meta.get("uses_imu", False),
                      "ate_rmse": aggregate_ate(sm),
                      "eligible_frac": min(1.0, float(el["len_m"].sum() / total)) if total > 0 else 0.0,
                      "n_segments": len(sm), "n_eligible": len(el),

@@ -1,4 +1,8 @@
-"""ROS1 bag -> stereo PNGs, per-scan NPZ (all fields), lidar_stamps.csv, gt.tum (LiDAR frame), meta.json."""
+"""ROS1 bag -> stereo PNGs, per-scan NPZ (all fields), lidar_stamps.csv, gt.tum (LiDAR frame), meta.json.
+
+Com `blind=True` (modo cego G1), o tópico de GT nunca é lido, mesmo quando está dentro do bag, e `gt.tum` não é
+gravado.
+"""
 import argparse
 import json
 from pathlib import Path
@@ -66,7 +70,9 @@ def _rectifier(cfg):
                            np.asarray(st["T_c0_c1"], float).reshape(4, 4), st["size"])
 
 
-def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
+def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None, blind=False):
+    if blind and (gt_tum or gt_bag):
+        raise ValueError("modo cego não aceita GT")
     out = Path(out)
     for d in ["images/left", "images/right", "clouds"]:
         (out / d).mkdir(parents=True, exist_ok=True)
@@ -79,7 +85,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
     with AnyReader([Path(bag)]) as r:
         start = r.start_time + int((t0_s or 0) * 1e9)
         stop = start + int(dur_s * 1e9) if dur_s else r.end_time + 1
-        want = {tp["left"], tp["right"], tp["lidar"], tp.get("gt")}
+        want = {tp["left"], tp["right"], tp["lidar"]} | (set() if blind else {tp.get("gt")})
         conns = [c for c in r.connections if c.topic in want]
         for c, t, raw in r.messages(connections=conns, start=start, stop=stop):
             m = r.deserialize(raw, c.msgtype)
@@ -120,7 +126,7 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
                 end = ts + int(round(info["t_max_s"] * 1e9)) if info["valid"] else ts
                 np.savez_compressed(out / "clouds" / f"{ts}.npz", **rec)
                 scans.append({"ts_ns": ts, "end_ns": end, **info})
-            elif c.topic == tp.get("gt"):
+            elif not blind and c.topic == tp.get("gt"):
                 p, q = m.pose.position, m.pose.orientation
                 gt_rows.append((ts, se3.to_mat([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])))
     pairs = sorted(set(left) & set(right))
@@ -128,7 +134,9 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
     sc = pd.DataFrame(scans).sort_values("ts_ns")
     sc.to_csv(out / "scans.csv", index=False)
     sc[["ts_ns", "end_ns"]].to_csv(out / "lidar_stamps.csv", index=False)
-    if gt_tum:
+    if blind:
+        ts_gt = None
+    elif gt_tum:
         ts_gt, Ts_gt = se3.load_tum(gt_tum)
     elif gt_bag:
         ts_gt, Ts_gt, gt_dropped = gt_from_bag(gt_bag, tp.get("gt", "/gt_poses"))
@@ -138,12 +146,14 @@ def extract(bag, cfg, out, t0_s=None, dur_s=None, gt_tum=None, gt_bag=None):
         Ts_gt = np.stack([g[1] for g in gt_rows])
     else:
         ts_gt, Ts_gt = np.zeros(0, np.int64), np.zeros((0, 4, 4))
-    se3.save_tum(out / "gt.tum", ts_gt, Ts_gt)  # GT já no frame do LiDAR (ver docs do dataset)
+    if not blind:
+        se3.save_tum(out / "gt.tum", ts_gt, Ts_gt)  # GT já no frame do LiDAR (ver docs do dataset)
     frac = float(np.mean(deskew_ok)) if deskew_ok else 0.0
-    meta = {"bag": str(bag), "n_scans": len(scans), "n_stereo": len(pairs), "n_gt": int(len(ts_gt)),
+    meta = {"bag": str(bag), "n_scans": len(scans), "n_stereo": len(pairs),
             "point_time": cfg.point_time, "deskew_valid_frac": frac, "deskew": bool(deskew_ok) and frac == 1.0,
             "unpaired_left": len(set(left) - set(right)), "unpaired_right": len(set(right) - set(left)),
-            "rectified": rect.params() if rect is not None else None, "gt_dropped_nonfinite": gt_dropped}
+            "rectified": rect.params() if rect is not None else None}
+    meta.update({"blind": True} if blind else {"n_gt": int(len(ts_gt)), "gt_dropped_nonfinite": gt_dropped})
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     return meta
 
@@ -157,8 +167,10 @@ def main():
     ap.add_argument("--duration", type=float)
     ap.add_argument("--gt-tum")
     ap.add_argument("--gt-bag", help="bag separado com o GT (tópico topics.gt do config)")
+    ap.add_argument("--blind", action="store_true", help="modo cego G1: ignora o tópico de GT e não grava gt.tum")
     a = ap.parse_args()
-    print(json.dumps(extract(a.bag, config.load(a.config), a.out, a.start, a.duration, a.gt_tum, a.gt_bag), indent=2))
+    print(json.dumps(extract(a.bag, config.load(a.config), a.out, a.start, a.duration, a.gt_tum, a.gt_bag, a.blind),
+                     indent=2))
 
 
 if __name__ == "__main__":

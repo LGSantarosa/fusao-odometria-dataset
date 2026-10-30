@@ -28,6 +28,11 @@ def build_schema(methods):
     return s
 
 
+def blind_schema(methods):
+    """Schema da tabela cega (G1): só metadados e features; alvo e colunas de avaliação não existem."""
+    return {c: r for c, r in build_schema(methods).items() if r in ("metadata", "feature")}
+
+
 def assert_no_leak(schema):
     bad = [c for c, r in schema.items() if r == "feature"
            and (c.startswith("gt_") or c.endswith("_err_t") or c.endswith("_err_r"))]

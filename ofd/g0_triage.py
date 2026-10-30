@@ -268,10 +268,10 @@ def _git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def _custody(path, action, seq, commit):
+def _custody(path, action, seq, commit, by="ofd.g0_triage"):
     log = Path(path).parent / "CUSTODY.log"
     entry = {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "file": Path(path).name, "action": action,
-             "seq": seq, "commit": commit, "by": "ofd.g0_triage"}
+             "seq": seq, "commit": commit, "by": by}
     with open(log, "a") as f:
         f.write(json.dumps(entry) + "\n")
 
