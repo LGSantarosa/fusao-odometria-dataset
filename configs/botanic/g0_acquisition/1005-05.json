@@ -9,7 +9,8 @@
   "gt": {
     "path": "data/sealed/botanic_gt/gt_1005_05_qnew.bag",
     "onedrive": "https://1drv.ms/u/s!AhA4pMEcWxdkgsgwphhKViT2sWniRg?e=mcPXj5",
-    "sha256": "33d9650b82135c2b8818932da693523811906699124d7037989dbb4de45dc1ca"
+    "sha256": "33d9650b82135c2b8818932da693523811906699124d7037989dbb4de45dc1ca",
+    "release": "GT_pose_qnew"
   },
   "calibration_dir": "data/raw/botanic/calib_params"
 }

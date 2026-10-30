@@ -325,3 +325,31 @@ leituras os GTs foram hasheados e somente os headers foram interpretados.
 Com cinco aprovadas e os três dias representados, a condição mínima de G0 para um teste com `k >= 5` está satisfeita.
 O status confirmatório continua dependente das três sequências restantes (que, se aprovadas, entram obrigatoriamente),
 do modo cego G1 completo (extração, tabela, predição e abertura) e do gate de viabilidade do piloto.
+
+## 11. Emenda de proveniência do GT da tabela adicional (30/10/2026, antes da triagem)
+
+### 11.1 Aquisição
+
+Em 30/10/2026, os bags e GTs de `1005-05`, `1006-03` e `1008-01` foram baixados dos links OneDrive da tabela adicional
+do catálogo oficial (commit `84c4806`), com `tools/fetch_onedrive.py` no commit `735bbc2`. Essas sequências não constam
+do registro SJTU, portanto não há md5 publicado: cada arquivo foi aceito somente após conferência do tamanho e do sha256
+informados pelo OneDrive, declarados em `configs/botanic/g0_acquisition/<seq>.json`. Os GTs foram gravados diretamente
+em `data/sealed/botanic_gt/`, lacrados (`000`) logo após a conferência e registrados como `acquire_seal` em
+`CUSTODY.log`. Na aquisição, o conteúdo dos GTs só foi lido para calcular hashes; nada foi interpretado.
+
+### 11.2 Decisão
+
+O critério 2 exige que a liberação oficial do GT conste em `accepted_releases` (hoje somente `GT_pose_qnew`). Para as
+três sequências, a liberação declarada no manifesto passa a ser `GT_pose_qnew`, com base em evidência exclusivamente
+catalográfica, obtida sem abrir os arquivos:
+
+- os links de GT vêm da linha `GT-pose` do mesmo catálogo oficial que publica `GT_pose_qnew`;
+- os nomes no OneDrive seguem o padrão `gt_{dia}_{num}_qnew.bag` da liberação `GT_pose_qnew`, inclusive o sufixo
+  `qnew`;
+- o contêiner é ROS1 bag (extensão `.bag`), com tamanho da mesma ordem do GT das cinco candidatas já triadas
+  (834–934 kB contra 640–1026 kB).
+
+Essa decisão é nominal. Ela não dispensa a verificação estrutural: a triagem continua exigindo `/gt_poses`
+`geometry_msgs/PoseStamped` com o mesmo md5 de definição e `frame_id` `/velodyne` em todas as mensagens, e qualquer
+divergência reprova a sequência com `GT_FORMAT_MISMATCH`. Critérios, referência (`12a80e15…`) e código da triagem não
+mudam. Conforme o critério 8, sequências aprovadas entram no teste independentemente do desempenho posterior.
