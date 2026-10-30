@@ -5,8 +5,7 @@
 **Fonte consultada:** catálogo oficial do BotanicGarden no commit
 [`84c4806`](https://github.com/robot-pesg/BotanicGarden/tree/84c4806428ca16c154238e263a7f8bf828bf58e1)
 
-**Estado:** inventário catalográfico concluído; 5/8 candidatas triadas e aprovadas (seção 10); `k` final pendente das três
-sequências da tabela adicional.
+**Estado:** inventário catalográfico concluído; 8/8 candidatas triadas e aprovadas (seções 10 e 11); `k = 8`.
 
 > **Emenda pré-triagem — 29/10/2026.** Antes de baixar ou inspecionar qualquer bag, foram acrescentados: agrupamento
 > por dia, limite da alegação a novas sequências, permanência de toda sequência aprovada independentemente do
@@ -130,11 +129,11 @@ distribuições ou desempenho.
 |---|---|---:|---:|---:|---:|---|
 | `1005-00` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 | `1005-01` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
-| `1005-05` | tabela pública adicional | sim | sim | não | não | pendente |
+| `1005-05` | tabela pública adicional | sim | sim | sim | lacrado | `APPROVED` |
 | `1005-07` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 | `1006-01` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
-| `1006-03` | tabela pública adicional | sim | sim | não | não | pendente |
-| `1008-01` | tabela pública adicional | sim | sim | não | não | pendente |
+| `1006-03` | tabela pública adicional | sim | sim | sim | lacrado | `APPROVED` |
+| `1008-01` | tabela pública adicional | sim | sim | sim | lacrado | `APPROVED` |
 | `1008-03` | sete amostras principais | sim | sim | sim | lacrado | `APPROVED` |
 
 “Lacrado” significa presente em `data/sealed/botanic_gt/`, sem permissão de leitura e não aberto (seção 8).
@@ -180,15 +179,14 @@ fluxo sequência a sequência, mas não a aquisição integral simultânea.
 ## 7. Decisão G0 e próximo gate
 
 - **G0-A — existência catalográfica:** aprovado; existem oito candidatas públicas novas com GT anunciado.
-- **G0-B — elegibilidade estrutural:** parcial; 5/5 candidatas triadas aprovadas (`1005-00`, `1005-01`, `1005-07`,
-  `1006-01`, `1008-03`; seção 10). `1005-05`, `1006-03` e `1008-01` aguardam aquisição do GT.
-- **`k` final:** `5 <= k <= 8`; aprovadas permanecem no teste (critério 8).
-- **grupos de dia:** três (`1005`, `1006`, `1008`); todos já representados entre as aprovadas (3, 1 e 1 sequências).
+- **G0-B — elegibilidade estrutural:** aprovado; 8/8 candidatas triadas aprovadas (`1005-00`, `1005-01`, `1005-07`,
+  `1006-01`, `1008-03` na seção 10; `1005-05`, `1006-03`, `1008-01` na seção 11).
+- **`k` final:** `k = 8`; aprovadas permanecem no teste (critério 8).
+- **grupos de dia:** três (`1005`, `1006`, `1008`), com 4, 2 e 2 sequências aprovadas.
 - **status confirmatório:** ainda não concedido; depende de G0-B, representação dos três dias e gate de viabilidade
   estatística do piloto.
 
-A triagem estrutural foi implementada (seção 9) e aplicada às cinco candidatas com GT local (seção 10). Próximos passos:
-adquirir e triar `1005-05`, `1006-03` e `1008-01` (GT da tabela adicional; formato a confirmar antes da triagem) e
+A triagem estrutural foi implementada (seção 9) e aplicada às oito candidatas (seções 10 e 11). Próximo passo:
 implementar o restante do modo cego G1 sem dados externos, antes de qualquer extração das sequências aprovadas.
 
 ## 8. Custódia do GT já presente localmente (emenda de 29/10/2026)
@@ -353,3 +351,27 @@ Essa decisão é nominal. Ela não dispensa a verificação estrutural: a triage
 `geometry_msgs/PoseStamped` com o mesmo md5 de definição e `frame_id` `/velodyne` em todas as mensagens, e qualquer
 divergência reprova a sequência com `GT_FORMAT_MISMATCH`. Critérios, referência (`12a80e15…`) e código da triagem não
 mudam. Conforme o critério 8, sequências aprovadas entram no teste independentemente do desempenho posterior.
+
+### 11.3 Decisões
+
+Execução com commit `0a40f3c` (emenda já registrada), árvore limpa e referência sha256 `12a80e15…`:
+
+| Sequência | Dia | Decisão | md5 do bag | sha256 do GT (registrado pela triagem) |
+|---|---|---|---|---|
+| `1005-05` | `1005` | `APPROVED` | `7250ca42d48385255def3e60999cda5d` | `33d9650b82135c2b8818932da693523811906699124d7037989dbb4de45dc1ca` |
+| `1006-03` | `1006` | `APPROVED` | `e868179b8a65e80ac98b564f8a2a0236` | `2d507e1344da2dbb8763f96971f9d9ea902e95f7084acc903768a3f8737cf3dd` |
+| `1008-01` | `1008` | `APPROVED` | `67661524c357b03308f66da48c8881cb` | `9e8a64b2f440dd7ac95399795187b20769f204da50001a7573e91a0a34c0d7db` |
+
+Os sha256 dos bags e dos GTs calculados pela triagem coincidem com os do OneDrive declarados nos manifestos. Saídas
+completas em `data/analysis/model_comparison/g0_triage/<seq>.json`; nenhuma contagem, duração, trajetória ou métrica foi
+vista.
+
+### 11.4 Custódia
+
+`CUSTODY.log` registra, para cada um dos três GTs, `acquire_seal` (aquisição) e um par `unseal_read`/`reseal` (triagem,
+14:06–14:30 UTC). Ao final, os oito GTs candidatos permanecem com permissão `000`.
+
+### 11.5 Consequência
+
+G0-B está concluído com `k = 8`: quatro sequências de `1005`, duas de `1006` e duas de `1008`. O status confirmatório
+continua dependente do modo cego G1 completo (extração, tabela, predição e abertura) e do gate de viabilidade do piloto.
