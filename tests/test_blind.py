@@ -298,3 +298,33 @@ def test_unlock_rejects_predictions_from_other_features(flow):
     with pytest.raises(blind.BlindError, match="não corresponde"):
         blind.unlock(other, flow["pm"], flow["acq"], out, require_clean=False)
     assert _custody(flow) == [] and not (out / "UNLOCK_STARTED").exists()
+
+
+def test_frozen_models_are_verified_and_listed_in_prediction_manifest(flow, monkeypatch, tmp_path):
+    from ofd import mc_final
+    art = tmp_path / "weights.npz"
+    art.write_bytes(b"pesos")
+    reg = tmp_path / "frozen.json"
+    reg.write_text("{}")
+    calls = []
+
+    def fake_load(registry):
+        calls.append(Path(registry))
+        return {"CNN_s0": lambda df: np.zeros((len(df), 6))}, [art]
+    monkeypatch.setattr(mc_final, "load_predictors", fake_load)
+    out = flow["root"] / "frozen"
+    m = blind.predict(flow["fm"], ["B5", "CNN_s0"], out, require_clean=False, registry=reg)
+    assert calls == [reg]
+    assert [e["path"] for e in m["models"]] == [str(art), str(reg)]
+    pred = pd.read_parquet(out / "predictions" / "SYN-01.parquet")
+    assert (pred[[f"CNN_s0_{c}" for c in blind.PRED]].to_numpy() == 0).all()
+    art.write_bytes(b"outros pesos")
+    with pytest.raises(blind.BlindError, match="alterados"):
+        blind.verify_manifest(out / "prediction_manifest.json", "predictions")
+    with pytest.raises(blind.BlindError, match="desconhecidos"):
+        blind.predict(flow["fm"], ["LSTM_s0"], flow["root"] / "x", require_clean=False, registry=reg)
+
+
+def test_frozen_names_exclude_lstm():
+    assert not any(n.startswith("LSTM") for n in blind.FROZEN_NAMES)
+    assert len(blind.FROZEN_NAMES) == 17

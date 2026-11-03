@@ -14,7 +14,7 @@ diretório.
 
     python -m ofd.blind freeze-features --seq <seq> <tabela.parquet> <runs_dir> [--seq ...] --config <yaml>
         --protocol <md> --out <feature_manifest.json>
-    python -m ofd.blind predict --features <feature_manifest.json> --model B5 [--model ...] --out-dir <dir>
+    python -m ofd.blind predict --features <feature_manifest.json> (--frozen | --model B5 [--model ...]) --out-dir <dir>
     python -m ofd.blind unlock --features <feature_manifest.json> --predictions <prediction_manifest.json>
         --acquisition-dir <dir> --out-dir <dir>
 """
@@ -152,19 +152,36 @@ def b5_mean(df):
     return out
 
 
-# Modelos treinados entram aqui quando forem congelados (fases 1–3), com seus artefatos listados em `models`.
+# Preditores sem artefato. Os modelos congelados (T1, T2 e cada família/semente: CNN_s0 … STEP_s4) vêm de
+# `ofd.mc_final.load_predictors`, que confere cada arquivo contra `configs/model_comparison_frozen.json`; os arquivos
+# entram em `models` do manifesto de predição e são reconferidos na abertura.
 PREDICTORS = {"B5": b5_mean}
+FROZEN_NAMES = ["T1", "T2"] + [f"{f}_s{s}" for f in ("CNN", "STEP", "MLPW") for s in range(5)]
 
 
-def predict(feature_manifest, models, out_dir, require_clean=True):
+def _resolve(models, registry=None):
+    funcs, entries = dict(PREDICTORS), []
+    if any(name not in PREDICTORS for name in models):
+        from ofd import mc_final
+        frozen, files = mc_final.load_predictors(registry or mc_final.REGISTRY)
+        funcs.update(frozen)
+        entries = [_entry(p) for p in files] + [_entry(registry or mc_final.REGISTRY)]
+    unknown = [name for name in models if name not in funcs]
+    if unknown:
+        raise BlindError(f"modelos desconhecidos: {unknown}")
+    return funcs, entries
+
+
+def predict(feature_manifest, models, out_dir, require_clean=True, registry=None):
     fm = verify_manifest(feature_manifest, "features")
+    funcs, model_entries = _resolve(models, registry)
     out_dir = Path(out_dir)
     preds = {}
     for seq, s in fm["sequences"].items():
         df = pd.read_parquet(s["table"]["path"])
         res = pd.DataFrame({"t": df["t"], "seq": df["seq"]})
         for name in models:
-            p = np.asarray(PREDICTORS[name](df[fusion_data.FEATURES + ["t", "seq"]]), float)
+            p = np.asarray(funcs[name](df[fusion_data.FEATURES + ["t", "seq"]]), float)
             if p.shape != (len(df), len(schema.TW)):
                 raise BlindError(f"{name}: predição com forma {p.shape}")
             for j, c in enumerate(PRED):
@@ -174,7 +191,7 @@ def predict(feature_manifest, models, out_dir, require_clean=True):
         res.to_parquet(path, index=False)
         preds[seq] = _entry(path)
     return _write_manifest("predictions", out_dir / "prediction_manifest.json", require_clean,
-                           feature_manifest=_entry(feature_manifest), model_names=list(models), models=[],
+                           feature_manifest=_entry(feature_manifest), model_names=list(models), models=model_entries,
                            predictions=preds)
 
 
@@ -308,7 +325,8 @@ def main():
     f.add_argument("--out", required=True)
     p = sub.add_parser("predict")
     p.add_argument("--features", required=True)
-    p.add_argument("--model", action="append", required=True, choices=sorted(PREDICTORS))
+    p.add_argument("--model", action="append", default=[], choices=sorted(PREDICTORS) + FROZEN_NAMES)
+    p.add_argument("--frozen", action="store_true", help="B5 + todos os modelos congelados (FROZEN_NAMES)")
     p.add_argument("--out-dir", required=True)
     u = sub.add_parser("unlock")
     u.add_argument("--features", required=True)
@@ -321,7 +339,10 @@ def main():
         freeze_features({s: (t, r) for s, t, r in a.seq}, a.config, a.protocol, a.out)
         print(f"{a.out} gravado")
     elif a.cmd == "predict":
-        predict(a.features, a.model, a.out_dir)
+        models = list(dict.fromkeys(a.model + (["B5"] + FROZEN_NAMES if a.frozen else [])))
+        if not models:
+            ap.error("informe --model ou --frozen")
+        predict(a.features, models, a.out_dir)
         print(f"{Path(a.out_dir) / 'prediction_manifest.json'} gravado")
     else:
         um = unlock(a.features, a.predictions, a.acquisition_dir, a.out_dir, a.triage_dir)
