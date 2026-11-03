@@ -29,7 +29,7 @@ from ofd import fusion_data as fd, mc_data, mc_filters, mc_models
 DEV = ("1018-00", "1018-13")
 FOLDS = {"A": ("1018-00", "1018-13"), "B": ("1018-13", "1018-00")}
 ROOT = Path("data/analysis/model_comparison/provisional_phase3")
-ALPHAS = (0.1, 0.2, 0.5, 1.0)
+ALPHAS = (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
 WINDOWS = (5, 10, 20)
 CV_SEEDS = (0, 1, 2)
 MAX_UPDATES = 8000

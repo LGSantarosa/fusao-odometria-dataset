@@ -8,7 +8,7 @@ from ofd import mc_pilot
 
 
 def test_pilot_grids_and_parameter_cap():
-    assert mc_pilot.ALPHAS == (0.1, 0.2, 0.5, 1.0)
+    assert mc_pilot.ALPHAS == (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
     assert mc_pilot.WINDOWS == (5, 10, 20)
     assert all(len(grid) == 18 for grid in mc_pilot.GRIDS.values())
     for family, grid in mc_pilot.GRIDS.items():
