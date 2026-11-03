@@ -514,6 +514,10 @@ de sensibilidade. Nenhuma repetição poderá substituir a realização principa
 - não apresentar o piloto como confirmação;
 - congelar código e decisões antes de qualquer resultado externo.
 
+**Emenda pré-piloto formal (03/11/2026):** `docs/amendment_phase3_pilot.md` fixa `E_gt`, o embargo máximo de 25%, a
+seleção de `W`, as grades e as regras de desempate, e declara o piloto provisório de 30/10 (commit `53e46eb`), executado
+antes da emenda, e os resultados vistos nele.
+
 ### Fase 4 — revisão e pré-registro
 
 - revisar o plano com orientador e revisor externo;
