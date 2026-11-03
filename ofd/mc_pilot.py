@@ -1,8 +1,9 @@
-"""Piloto provisório da fase 3 em 1018-00/1018-13.
+"""Piloto formal da fase 3 em 1018-00/1018-13, sob ``docs/amendment_phase3_pilot.md``.
 
 Este módulo nunca aceita caminhos ou nomes de sequência pela CLI: a allowlist de
 desenvolvimento é fixa. Resultados ficam em ``data/analysis/model_comparison/
-provisional_phase3`` e não autorizam processamento do teste externo.
+formal_phase3`` e não autorizam processamento do teste externo. O piloto
+provisório (``provisional_phase3``, commit 53e46eb) não é reutilizado.
 
 Uso:
     python -m ofd.mc_pilot alpha
@@ -28,7 +29,9 @@ from ofd import fusion_data as fd, mc_data, mc_filters, mc_models
 
 DEV = ("1018-00", "1018-13")
 FOLDS = {"A": ("1018-00", "1018-13"), "B": ("1018-13", "1018-00")}
-ROOT = Path("data/analysis/model_comparison/provisional_phase3")
+ROOT = Path("data/analysis/model_comparison/formal_phase3")
+PROVISIONAL_ROOT = Path("data/analysis/model_comparison/provisional_phase3")
+AMENDMENT = Path("docs/amendment_phase3_pilot.md")
 ALPHAS = (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
 WINDOWS = (5, 10, 20)
 CV_SEEDS = (0, 1, 2)
@@ -67,10 +70,22 @@ def _git(*args):
     return subprocess.check_output(("git", *args), text=True).strip()
 
 
+def _amendment():
+    """Hash e commit da emenda; recusa emenda ausente, não rastreada ou alterada."""
+    if not AMENDMENT.exists():
+        raise RuntimeError(f"emenda ausente: {AMENDMENT}")
+    commit = _git("log", "-1", "--format=%H", "--", str(AMENDMENT))
+    if not commit or _git("status", "--porcelain", "--", str(AMENDMENT)):
+        raise RuntimeError(f"emenda não registrada ou alterada: {AMENDMENT}")
+    return {"path": str(AMENDMENT), "commit": commit,
+            "sha256": hashlib.sha256(AMENDMENT.read_bytes()).hexdigest()}
+
+
 def _manifest_payload():
     return {
-        "status": "PROVISIONAL_DEVELOPMENT_PILOT",
+        "status": "FORMAL_DEVELOPMENT_PILOT",
         "external_test_authorized": False,
+        "amendment": _amendment(),
         "development_sequences": list(DEV),
         "commit": _git("rev-parse", "HEAD"),
         "alphas": list(ALPHAS),
@@ -88,17 +103,19 @@ def _manifest_payload():
 
 
 def initialize(root=ROOT, require_clean=True):
-    """Cria ou confere manifesto imutável. Uma árvore suja não inicia o piloto oficial provisório."""
+    """Cria ou confere manifesto imutável. Uma árvore suja não inicia o piloto formal."""
     if require_clean and _git("status", "--porcelain"):
         raise RuntimeError("árvore Git suja; faça commit antes de iniciar o piloto")
     root = Path(root)
+    if root.resolve() == PROVISIONAL_ROOT.resolve():
+        raise RuntimeError("a raiz do piloto provisório não é reutilizada")
     root.mkdir(parents=True, exist_ok=True)
     path = root / "manifest.json"
     payload = _manifest_payload()
     if path.exists():
         old = json.loads(path.read_text())
         if old != payload:
-            raise RuntimeError("manifesto provisório já existe com commit ou configuração diferente")
+            raise RuntimeError("manifesto já existe com commit ou configuração diferente")
     else:
         _atomic_json(path, payload)
     return payload

@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import numpy as np
@@ -29,13 +30,39 @@ def test_choose_uses_one_percent_then_complexity():
     assert mc_pilot._choose(rows, complexity_key="n") == rows[1]
 
 
-def test_manifest_is_provisional_and_immutable(tmp_path, monkeypatch):
-    monkeypatch.setattr(mc_pilot, "_git", lambda *a: "abc" if a[0] == "rev-parse" else "")
+def _fake_git(*a):
+    return "abc" if a[0] in ("rev-parse", "log") else ""
+
+
+def test_manifest_is_formal_and_immutable(tmp_path, monkeypatch):
+    monkeypatch.setattr(mc_pilot, "_git", _fake_git)
     got = mc_pilot.initialize(tmp_path)
+    assert got["status"] == "FORMAL_DEVELOPMENT_PILOT"
     assert not got["external_test_authorized"] and got["development_sequences"] == list(mc_pilot.DEV)
+    sha = hashlib.sha256(mc_pilot.AMENDMENT.read_bytes()).hexdigest()
+    assert got["amendment"] == {"path": str(mc_pilot.AMENDMENT), "commit": "abc", "sha256": sha}
     p = tmp_path / "manifest.json"
     old = json.loads(p.read_text())
     monkeypatch.setattr(mc_pilot, "ALPHAS", (0.5, 1.0))
     with pytest.raises(RuntimeError, match="configuração diferente"):
         mc_pilot.initialize(tmp_path)
     assert json.loads(p.read_text()) == old
+
+
+def test_manifest_refuses_unregistered_amendment(tmp_path, monkeypatch):
+    monkeypatch.setattr(mc_pilot, "_git", lambda *a: "abc" if a[0] == "rev-parse" else "")
+    with pytest.raises(RuntimeError, match="emenda não registrada"):
+        mc_pilot.initialize(tmp_path)
+    monkeypatch.setattr(mc_pilot, "_git",
+                        lambda *a: " M docs/x.md" if a[:2] == ("status", "--porcelain") and len(a) > 2
+                        else _fake_git(*a))
+    with pytest.raises(RuntimeError, match="emenda não registrada"):
+        mc_pilot.initialize(tmp_path, require_clean=False)
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_formal_pilot_never_reuses_provisional_root(monkeypatch):
+    monkeypatch.setattr(mc_pilot, "_git", _fake_git)
+    assert mc_pilot.ROOT != mc_pilot.PROVISIONAL_ROOT
+    with pytest.raises(RuntimeError, match="provisório"):
+        mc_pilot.initialize(mc_pilot.PROVISIONAL_ROOT)
