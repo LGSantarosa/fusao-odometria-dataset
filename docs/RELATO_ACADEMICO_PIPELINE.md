@@ -161,7 +161,7 @@ A suíte automatizada contém 115 testes. Além dos testes unitários, os execut
 fumaça sintéticos, e a tabela final é submetida a um teste de contrato que verifica causalidade, papéis das colunas,
 normalização de quatérnios e ausência de vazamento de atributos de avaliação para a entrada do modelo.
 
-## 3. Resultados preliminares
+## 3. Resultados experimentais
 
 ### 3.1 Configuração dos experimentos de fumaça
 
@@ -538,6 +538,65 @@ válidas e ficaram próximos do uniforme com as quatro. Essas observações não
 delas derivadas exigem novo protocolo. Tabelas completas (por semente, por componente, por estrato, pesos e descrições
 do RELLIS-3D) estão em `docs/RESULTS_fusion_model.md`.
 
+### 3.9 Comparação temporal com teste externo cego
+
+Um segundo estudo investigou se o histórico causal melhora a fusão em sequências de outros dias, na mesma plataforma
+e no mesmo ambiente. As sequências `1018-00` e `1018-13`, já analisadas, foram reservadas ao desenvolvimento. O teste
+externo reuniu oito sequências do BotanicGarden, distribuídas nos dias 1005, 1006 e 1008. Features, predições e
+manifestos foram produzidos sem ler o *ground truth* (GT); os modelos e seus hashes foram congelados antes desse
+processamento, e o GT foi aberto uma única vez depois de auditoria e autorização explícita.
+
+O piloto de desenvolvimento fixou a pós-filtragem comum em `alpha = 1,0`, a janela causal em `W = 5` e selecionou uma
+CNN 1D como representante temporal pelo critério pré-fixado de perda e complexidade. Entretanto, o gate de viabilidade
+mostrou que a hipótese original — superioridade temporal sobre o modelo por passo e a média simples em erro linear e
+angular — era incompatível com as duas dobras de desenvolvimento. A CNN ficou pior que o modelo STEP nas duas
+métricas e pior que a média no erro linear. Esse resultado foi preservado como negativo. Antes de processar as oito
+sequências externas, uma emenda declarou a origem pós-desenvolvimento de uma hipótese mais estreita, H1': a CNN
+reduziria o RMSE angular em relação à média simples B5/T1. A H1' só seria positiva se a melhora relativa mediana fosse
+estritamente positiva nas oito sequências e separadamente em cada um dos três dias. RMSE linear e RPE translacional de
+10 m foram mantidos como guardas descritivas, sem margem de não inferioridade escolhida depois dos dados.
+
+Os modelos finais foram ajustados conjuntamente em `1018-00` e `1018-13`. CNN, STEP e MLP-W usaram cinco sementes;
+T2 foi um filtro de Kalman de velocidade com hiperparâmetros selecionados no desenvolvimento; B5/T1 foi a média causal
+das fontes válidas. No teste externo, cada modelo aprendido foi resumido pela média das cinco métricas de semente por
+sequência, sem ensemble de predições.
+
+**Resultado da H1' por sequência**
+
+| Sequência | B5/T1 RMSE angular (rad/s) | CNN RMSE angular (rad/s) | Melhora relativa da CNN |
+|---|---:|---:|---:|
+| 1005-00 | 0,03521 | 0,03578 | -1,60% |
+| 1005-01 | 0,02504 | 0,02400 | +4,13% |
+| 1005-05 | 0,03124 | 0,03130 | -0,20% |
+| 1005-07 | 0,04889 | 0,05373 | -9,90% |
+| 1006-01 | 0,03960 | 0,04130 | -4,27% |
+| 1006-03 | 0,03128 | 0,03288 | -5,11% |
+| 1008-01 | 0,03916 | 0,04033 | -2,99% |
+| 1008-03 | 0,04741 | 0,05233 | -10,38% |
+
+A H1' foi **negativa**. A melhora relativa, definida como `1 - RMSE_CNN / RMSE_B5`, teve mediana de -3,63% no
+conjunto, -0,90% no dia 1005, -4,69% no dia 1006 e -6,68% no dia 1008. Somente uma das oito sequências favoreceu a
+CNN. As métricas estavam definidas em todas as sequências, portanto o resultado não foi indeterminado. Nas guardas, a
+CNN aumentou em mediana o RMSE linear em 1,92% e o RPE translacional de 10 m em 14,15% contra B5; não houve uma troca
+entre ganho angular e custo de trajetória, pois o ganho angular observado no desenvolvimento também desapareceu.
+
+As comparações restantes são descritivas. STEP teve RMSE angular 2,97% maior e RPE de 10 m 10,93% maior que B5 em
+mediana, embora seu RMSE linear tenha sido 0,45% menor. MLP-W aumentou as três métricas em mediana. T2 apresentou RMSE
+angular menor que B5 nas oito sequências, com redução relativa mediana de 6,88%, mas aumentou o RMSE linear em 2,15% e
+o RPE de 10 m em 8,08%. Como a comparação confirmatória com T2 não foi registrada antes da abertura, esse padrão não
+foi promovido a nova hipótese.
+
+O contraste entre desenvolvimento e teste externo constitui o principal resultado: a CNN havia reduzido o RMSE
+angular contra B5 em 20,0% e 11,3% nas duas dobras conhecidas, mas esse padrão não se generalizou aos outros três dias.
+O processamento cego, o congelamento de artefatos e a abertura única impediram que a seleção fosse adaptada a esse
+resultado. A conclusão se restringe à CNN, às configurações, à plataforma e ao ambiente estudados; ela não demonstra
+que toda fusão aprendida seja inferior nem que T2 tenha superioridade geral.
+
+**Rastreabilidade.** Gate e emenda em `docs/amendment_phase4_hypothesis.md` (commit `2b71407`); modelos congelados e
+predição cega no commit `991aa2a`; manifesto da abertura com SHA-256
+`db4ad6e127ec653893a08577df6f3afa668ecdc6784b1ea57725b8adb1f90328`; análise reprodutível no commit `0a94f76`;
+resultado completo em `docs/RESULTS_phase4_external.md` (commit `f615426`).
+
 ## 4. Ameaças à validade
 
 ### 4.1 Validade do construto
@@ -556,11 +615,12 @@ atribuídas incorretamente ao estimador sem o experimento controlado.
 
 ### 4.3 Validade externa
 
-Os resultados abrangem duas sequências com GT, ambas do BotanicGarden (1018-00 e 1018-13), e duas sem GT do
-RELLIS-3D (trecho de 60 s e sequência 00000). Portanto, não permitem generalização para todos os ambientes externos,
-condições climáticas ou configurações sensoriais, e a avaliação confirmatória restringe-se a um único ambiente e a um
-único conjunto de sensores. A inclusão do RELLIS-3D amplia a diversidade apenas para cobertura, continuidade e
-indicadores, e nenhum dos resultados substitui a validação no robô real.
+O desenvolvimento da fusão usa duas sequências com GT e o teste cego usa outras oito sequências, todas do
+BotanicGarden. As oito externas pertencem a somente três dias e não representam oito condições plenamente
+independentes. O teste amplia a evidência para outras datas e trajetos na mesma plataforma, mas não permite
+generalização para outros ambientes, condições climáticas ou configurações sensoriais. As duas sequências sem GT do
+RELLIS-3D (trecho de 60 s e sequência 00000) ampliam a diversidade apenas para cobertura, continuidade e indicadores;
+nenhum desses resultados substitui validação com GT em outra base ou no robô real.
 
 ### 4.4 Validade dos resultados
 
@@ -574,6 +634,13 @@ BotanicGarden. Na sequência 00000, além disso, a associação entre poses e va
 única (seção 3.5), e a sequência não é utilizada com GT. Resultados de sequências em processamento não são
 incorporados até que os contratos e as métricas sejam verificados.
 
+No teste externo, as redes foram avaliadas com cinco sementes, mas cada odometria visual teve uma única realização
+oficial por sequência. Assim, a variabilidade das sementes do modelo não incorpora a variabilidade de reexecução das
+fontes visuais. A regra principal usou a sequência como unidade e exigiu sinal favorável em cada dia, sem tratar as
+oito sequências como independentes nem calcular significância por linha. O código que automatizou a análise secundária
+foi acrescentado depois da abertura, mas implementa regras e métricas já registradas; ele verifica os hashes da
+abertura e reproduz exatamente as métricas primárias antes de calcular RPE e ATE.
+
 ## 5. Implicações para o modelo de fusão
 
 Os experimentos mostram que precisão, disponibilidade e continuidade são propriedades distintas. FAST-LIO2 apresentou
@@ -582,26 +649,29 @@ maior, porém manteve cobertura praticamente total. As odometrias visuais aprese
 imagens, mas ficaram indisponíveis no restante da sequência. Portanto, selecionar uma fonte apenas pelo menor erro médio
 não atende ao objetivo de navegação robusta.
 
-Esses resultados justificam fornecer ao modelo não somente incrementos de pose, mas também validade, idade, duração do
-incremento, estado de rastreamento e indicadores de qualidade. Também justificam distinguir indisponibilidade sensorial,
-falha de infraestrutura e degradação real do algoritmo. A futura avaliação da fusão deverá comparar a trajetória final
-com cada fonte isolada e com estratégias de pesos fixos, conforme as hipóteses formuladas na dissertação.
+Esses resultados justificaram fornecer ao modelo não somente incrementos de pose, mas também validade, idade, duração
+do incremento, estado de rastreamento e indicadores de qualidade. Também justificaram distinguir indisponibilidade
+sensorial, falha de infraestrutura e degradação real do algoritmo. A avaliação da fusão comparou a trajetória final
+com as fontes e com estratégias clássicas, conforme as hipóteses formuladas na dissertação.
 
-O primeiro experimento confirmatório (seção 3.8) cumpriu essa comparação em duas sequências do mesmo dataset. Ele não
-sustenta que a ponderação aprendida supere os baselines em ambas as componentes, mas indica ganho na velocidade
-angular e mostra que a combinação simples já supera a melhor fonte isolada escolhida no treino. Como há apenas duas
-sequências com GT validado, ambas do BotanicGarden, o resultado não permite generalizar para outros ambientes ou
-sensores.
+O primeiro experimento confirmatório (seção 3.8) não sustentou que a ponderação aprendida superasse os baselines nas
+duas componentes, embora tenha mostrado ganho angular nas duas dobras conhecidas. O teste externo da seção 3.9 mostrou
+que o ganho angular da CNN selecionada não se repetiu nos três outros dias e que a média simples permaneceu um baseline
+difícil de superar. O desempenho angular consistente do T2 sugere estudar explicitamente quando estrutura clássica e
+incerteza calibrada transferem melhor que modelos aprendidos; essa é uma interpretação exploratória, não uma hipótese
+confirmada pelo teste já aberto.
 
 ## 6. Próximos experimentos
 
-1. Repetir as odometrias visuais nas sequências completas para estimar a variabilidade entre execuções.
-2. Caso se decida prosseguir com a causa da degradação do KISS-ICP com *deskew*, registrar novo protocolo que trate o
+1. Consolidar o estudo cego em artigo, mantendo visíveis a inviabilidade da hipótese original, a origem da H1' e seu
+   resultado negativo externo.
+2. Repetir as odometrias visuais em um estudo separado para estimar como a variabilidade das fontes afeta os modelos;
+   as realizações oficiais do teste concluído não serão substituídas.
+3. Caso se decida prosseguir com a causa da degradação do KISS-ICP com *deskew*, registrar novo protocolo que trate o
    aumento do erro por quadro sob compensação e a dependência, observada post hoc, entre o ganho da compensação e a
    velocidade angular (seção 3.7).
-3. Decidir com o orientador se duas sequências confirmatórias bastam para o primeiro artigo ou se é necessária uma
-   segunda base com GT validado; novas hipóteses de fusão (por exemplo, tratar translação e rotação separadamente)
-   exigem protocolo próprio, pré-registrado antes de qualquer execução.
+4. Para qualquer nova alegação sobre T2, separação entre translação e rotação ou outra arquitetura, adquirir teste
+   independente ou registrar protocolo para outra base antes de consultar seus resultados.
 
 ## Referências
 
@@ -638,5 +708,8 @@ p. 2053-2073, 2022. Disponível em: <https://doi.org/10.1109/TRO.2022.3141876>.
 - Sequências completas e tolerância do casamento do FAST-LIO2: `docs/RESULTS_sequences.md`.
 - Modelo de fusão: protocolo `docs/protocol_fusion_model.md` (`44bc961`, emenda `77d70ba`), resultados
   `docs/RESULTS_fusion_model.md`; fase 1 em `0ca8afc`, fase 2 executada com `0ca8afc`.
+- Comparação temporal externa: plano `docs/PLAN_model_comparison.md`, piloto `docs/RESULTS_phase3_pilot.md`, emenda
+  `docs/amendment_phase4_hypothesis.md`, resultado `docs/RESULTS_phase4_external.md`, análise `ofd/mc_external.py` e
+  artefatos locais em `data/blind_g1/{unlock,external_results}/`.
 - Estado reproduzível do código após revisão: commits `7db3804` e `2c35918`; tolerância do casamento do FAST-LIO2 em
   `f0b7ea7`, com correções de documentação e da interface de remontagem no commit seguinte.

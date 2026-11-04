@@ -1,6 +1,24 @@
-# Estado do projeto — 2026-10-20
+# Estado do projeto — 2026-11-04
 
-Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 283 testes passando (`scripts/test.sh -q`).
+Branch `feat/dataset-pipeline` (base `master`). Nada rodando. Suíte: 370 testes passando
+(`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -q`).
+
+## Atualização — comparação temporal externa
+
+A Fase 5 de `docs/PLAN_model_comparison.md` foi concluída. O fluxo treinou e congelou CNN, STEP e MLP-W com cinco
+sementes, além de T2; processou oito sequências externas de três dias sem GT; auditou os manifestos; e abriu os oito
+GTs uma única vez após autorização explícita. O código, os modelos e as predições cegas estavam congelados no commit
+`991aa2a`.
+
+A H1' foi negativa: a CNN favoreceu somente 1/8 sequência e teve efeito angular mediano de -3,63% contra B5/T1, além
+de -1,92% no RMSE linear e -14,15% no RPE translacional de 10 m. Descritivamente, T2 reduziu o RMSE angular contra B5
+nas 8/8 sequências, mas essa não era uma hipótese confirmatória. Analisador no commit `0a94f76`; resultado completo no
+commit `f615426`, ambos publicados em `origin/feat/dataset-pipeline`. Os GTs originais foram relacrados com modo `000`.
+
+**Próxima frente:** transformar o estudo fechado em artigo, começando pelas figuras e tabelas derivadas dos artefatos
+com hash. O roteiro está em `docs/ARTICLE_model_comparison_outline.md`. Qualquer novo teste de T2, arquitetura ou
+separação entre translação e rotação exige dados independentes e novo protocolo; o teste G1 não será reutilizado para
+seleção.
 
 ## Feito
 - Núcleo `ofd/` (Tasks 1–8): SE3, trilhas, sincronização causal, tempo por ponto, indicadores, schema, avaliação.
